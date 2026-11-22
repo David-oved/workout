@@ -46,6 +46,7 @@ export default defineConfig({
         name: 'workOut',
         short_name: 'workOut',
         description: 'מעקב תזונה ואימונים אישי למאסה',
+        id: BASE,
         lang: 'he',
         dir: 'rtl',
         display: 'standalone',
