@@ -31,17 +31,23 @@ export const maskKey = (k: string) => (k.length > 10 ? `${k.slice(0, 4)}…${k.s
 const FALLBACKS = ['gemini-3.8-flash', 'gemini-3.6-flash', 'gemini-3.5-flash-lite', 'gemini-flash-latest'];
 
 class AiHttpError extends Error {
-  constructor(public status: number, msg: string) { super(msg); }
+  constructor(public status: number, msg: string, public raw = '', public fatal = false, public detail = '') { super(msg); }
 }
 async function httpError(r: Response): Promise<AiHttpError> {
   let raw = '';
-  try { raw = (await r.json())?.error?.message ?? ''; } catch { /* ignore */ }
-  if (r.status === 400 && /api key/i.test(raw)) return new AiHttpError(400, 'המפתח לא תקין');
-  if (r.status === 401 || r.status === 403) return new AiHttpError(r.status, 'אין הרשאה למפתח הזה. ודא שהוא פעיל ושה-Gemini API מופעל');
-  if (r.status === 404) return new AiHttpError(404, 'המודל לא נמצא');
-  if (r.status === 429) return new AiHttpError(429, 'חרגת מהמכסה של Gemini. נסה שוב בעוד דקה');
-  if (r.status >= 500) return new AiHttpError(r.status, 'השרת של Gemini עמוס כרגע. נסה שוב');
-  return new AiHttpError(r.status, `שגיאה מ-Gemini (${r.status})${raw ? `: ${raw.slice(0, 140)}` : ''}`);
+  let st = '';
+  try {
+    const j = await r.json();
+    raw = j?.error?.message ?? '';
+    st = j?.error?.status ?? '';
+  } catch { /* ignore */ }
+  const tail = `${raw}${st ? ` [${st}]` : ''}`;
+  if (r.status === 400 && /api key/i.test(raw)) return new AiHttpError(400, 'המפתח לא תקין', tail, true);
+  if (r.status === 401 || r.status === 403) return new AiHttpError(r.status, 'אין הרשאה למפתח הזה. ודא שהוא פעיל ושה-Gemini API מופעל', tail, true);
+  if (r.status === 404) return new AiHttpError(404, 'המודל לא נמצא', tail);
+  if (r.status === 429) return new AiHttpError(429, 'חרגת מהמכסה של Gemini. נסה שוב בעוד דקה', tail);
+  if (r.status >= 500) return new AiHttpError(r.status, 'השרת של Gemini עמוס כרגע. נסה שוב', tail);
+  return new AiHttpError(r.status, `שגיאה מ-Gemini (${r.status})${raw ? `: ${raw.slice(0, 140)}` : ''}`, tail);
 }
 
 async function listModels(key: string) {
@@ -163,30 +169,40 @@ async function ensureModel(key: string, force = false): Promise<string> {
   return model;
 }
 
-/** תור בשיחה: שולח את כל ההיסטוריה ומקבל הודעה ורשימת מנות מעודכנת */
+/** שגיאה עם פירוט טכני (קוד, מודל, ההודעה המקורית של Google ומה נוסה) להצגה למשתמש */
+function withDetail(e: AiHttpError, log: string[]) {
+  e.detail = log.join('\n');
+  return e;
+}
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/** תור בשיחה: שולח את כל ההיסטוריה ומקבל הודעה ורשימת מנות מעודכנת. בשגיאת שרת מנסה שוב ועם מודלים אחרים. */
 export async function chatTurn(turns: ChatTurn[]): Promise<AiResult> {
   const key = getAiKey();
   if (!key) throw new Error('אין מפתח Gemini. חבר מפתח בהגדרות');
-  const body = JSON.stringify({
-    systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
-    contents: turns.map((t) => ({
-      role: t.role,
-      parts: [
-        { text: t.text || ' ' },
-        ...(t.images ?? []).map((i) => ({ inlineData: { mimeType: i.mime, data: i.data } })),
-      ],
-    })),
-    generationConfig: { responseMimeType: 'application/json', temperature: 0.3 },
-  });
 
-  const call = async (model: string) => {
+  const bodyFor = (json: boolean) =>
+    JSON.stringify({
+      systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
+      contents: turns.map((t) => ({
+        role: t.role,
+        parts: [
+          { text: t.text || ' ' },
+          ...(t.images ?? []).map((i) => ({ inlineData: { mimeType: i.mime, data: i.data } })),
+        ],
+      })),
+      generationConfig: json ? { responseMimeType: 'application/json', temperature: 0.3 } : { temperature: 0.3 },
+    });
+
+  const call = async (model: string, json: boolean) => {
     const ctl = new AbortController();
     const to = setTimeout(() => ctl.abort(), 60_000);
     try {
       const r = await fetch(`${API}/models/${model}:generateContent`, {
         method: 'POST',
         headers: { 'x-goog-api-key': key, 'Content-Type': 'application/json' },
-        body,
+        body: bodyFor(json),
         signal: ctl.signal,
       });
       if (!r.ok) throw await httpError(r);
@@ -196,24 +212,42 @@ export async function chatTurn(turns: ChatTurn[]): Promise<AiResult> {
     }
   };
 
+  const log: string[] = [];
   try {
-    let model = await ensureModel(key);
-    let j: any;
-    try {
-      j = await call(model);
-    } catch (e) {
-      if (e instanceof AiHttpError && (e.status === 404 || e.status === 400)) {
-        model = await ensureModel(key, true);
-        j = await call(model);
-      } else throw e;
+    const cur = await ensureModel(key);
+    const alts = FALLBACKS.filter((m) => m !== cur && m !== 'gemini-flash-latest').slice(0, 2);
+    const attempts: { model: string; json: boolean }[] = [
+      { model: cur, json: true },
+      { model: cur, json: false },
+      ...alts.map((m) => ({ model: m, json: true })),
+    ];
+    let last: AiHttpError | undefined;
+    for (const a of attempts) {
+      try {
+        const j = await call(a.model, a.json);
+        if (j?.promptFeedback?.blockReason) throw new Error('הבקשה נחסמה על ידי Gemini. נסה לנסח אחרת');
+        const text = (j?.candidates?.[0]?.content?.parts ?? []).map((p: any) => p?.text ?? '').join('');
+        if (!text.trim()) {
+          log.push(`${a.model}${a.json ? '' : ' (בלי JSON)'}: תשובה ריקה`);
+          continue;
+        }
+        return parseAiJson(text, uid);
+      } catch (e) {
+        if (!(e instanceof AiHttpError)) {
+          if ((e as Error).name === 'AbortError') { log.push(`${a.model}: פג הזמן`); continue; }
+          throw e;
+        }
+        log.push(`${a.model}${a.json ? '' : ' (בלי JSON)'} → ${e.status}: ${e.raw || e.message}`);
+        last = e;
+        if (e.fatal) throw withDetail(e, log);
+        if (e.status >= 500 || e.status === 429) await sleep(e.status === 429 ? 2500 : 900);
+      }
     }
-    if (j?.promptFeedback?.blockReason) throw new Error('הבקשה נחסמה על ידי Gemini. נסה לנסח אחרת');
-    const text = (j?.candidates?.[0]?.content?.parts ?? []).map((p: any) => p?.text ?? '').join('');
-    if (!text.trim()) throw new Error('Gemini לא החזיר תשובה. נסה שוב');
-    return parseAiJson(text, uid);
+    if (last) throw withDetail(last, log);
+    const e = new AiHttpError(0, 'Gemini לא החזיר תשובה שימושית. נסה שוב', '', false);
+    throw withDetail(e, log);
   } catch (e) {
     if (e instanceof AiHttpError) throw e;
-    if ((e as Error).name === 'AbortError') throw new Error('הבקשה לקחה יותר מדי זמן. נסה שוב');
     if (e instanceof TypeError) throw new Error('אין חיבור לאינטרנט');
     throw e;
   }

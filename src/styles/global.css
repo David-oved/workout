@@ -356,3 +356,6 @@ select.inp{background-image:none}
 .mig input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:24px;height:24px;border-radius:50%;background:#fff;margin-top:-9px;box-shadow:0 2px 8px rgba(0,0,0,.45)}
 .mig input[type=range]::-moz-range-track{height:6px;border-radius:3px;background:rgba(255,255,255,.14)}
 .mig input[type=range]::-moz-range-thumb{width:24px;height:24px;border:0;border-radius:50%;background:#fff}
+
+.adetb{display:block;margin:8px 0 0!important;color:var(--mu)!important;font-weight:400!important;font-size:13px;text-decoration:underline}
+.adet{direction:ltr;text-align:left;white-space:pre-wrap;word-break:break-word;margin:8px 0 0;padding:10px 12px;border-radius:12px;background:rgba(0,0,0,.35);color:#f3e6c4;font-size:12px;line-height:1.5;font-family:ui-monospace,Menlo,monospace;-webkit-user-select:text;user-select:text}

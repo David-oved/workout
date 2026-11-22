@@ -23,7 +23,7 @@ export interface Msg {
   addedIds?: string[];
   addedLabel?: string;
 }
-interface ChatState { messages: Msg[]; busy: boolean; error?: string }
+interface ChatState { messages: Msg[]; busy: boolean; error?: string; detail?: string }
 
 const LS = 'wo:ai-chat';
 function load(): ChatState {
@@ -80,7 +80,7 @@ function buildTurns(msgs: Msg[]): ChatTurn[] {
 const stripId = ({ id: _id, ...rest }: AiItem) => rest;
 
 async function runTurn() {
-  setChat((s) => ({ ...s, busy: true, error: undefined }));
+  setChat((s) => ({ ...s, busy: true, error: undefined, detail: undefined }));
   try {
     const res = await chatTurn(buildTurns(chat.get().messages));
     setChat((s) => {
@@ -96,7 +96,7 @@ async function runTurn() {
       return { ...s, messages: msgs, busy: false };
     });
   } catch (e) {
-    setChat((s) => ({ ...s, busy: false, error: (e as Error).message }));
+    setChat((s) => ({ ...s, busy: false, error: (e as Error).message, detail: (e as { detail?: string }).detail }));
   }
 }
 

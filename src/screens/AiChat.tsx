@@ -95,6 +95,7 @@ export function AiChat() {
   const [text, setText] = useState('');
   const [imgs, setImgs] = useState<{ url: string; data: string; mime: string }[]>([]);
   const [imgBusy, setImgBusy] = useState(false);
+  const [showDet, setShowDet] = useState(false);
   const bodyRef = useRef<HTMLDivElement>(null);
   const taRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -175,7 +176,22 @@ export function AiChat() {
           </div>
         ))}
         {st.busy && <div class="msg a"><div class="mb typing"><i /><i /><i /></div></div>}
-        {st.error && <div class="aerr">{st.error} <button onClick={() => void retryLast()}>נסה שוב</button></div>}
+        {st.error && (
+          <div class="aerr">
+            <div>{st.error} <button onClick={() => void retryLast()}>נסה שוב</button></div>
+            {st.detail && (
+              <>
+                <button class="adetb" onClick={() => setShowDet((v) => !v)}>{showDet ? 'הסתר פרטים טכניים' : 'פרטים טכניים'}</button>
+                {showDet && (
+                  <>
+                    <pre class="adet">{st.detail}</pre>
+                    <button class="adetb" onClick={async () => { try { await navigator.clipboard.writeText(st.detail ?? ''); } catch { /* ignore */ } }}>העתק</button>
+                  </>
+                )}
+              </>
+            )}
+          </div>
+        )}
       </div>
 
       {configured && (
