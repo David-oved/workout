@@ -17,7 +17,7 @@ import type { Dish, Part } from '../core/types';
  */
 const LOSS = [0, 0.1, 0.2, 0.3];
 
-export function PotSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
+export function PotSheet({ open, onClose, forceNew = false }: { open: boolean; onClose: () => void; forceNew?: boolean }) {
   const s = store.use((x) => x);
   const [mode, setMode] = useState<'list' | 'edit'>('list');
   const [id, setId] = useState('');
@@ -28,7 +28,7 @@ export function PotSheet({ open, onClose }: { open: boolean; onClose: () => void
   const [remain, setRemain] = useState('');
   const [msg, setMsg] = useState('');
 
-  useEffect(() => { if (open) { setMode(s.dishes.length ? 'list' : 'edit'); if (!s.dishes.length) fresh(); } }, [open]);
+  useEffect(() => { if (open) { const nw = forceNew || !s.dishes.length; setMode(nw ? 'edit' : 'list'); if (nw) fresh(); } }, [open]);
 
   const fresh = () => { setId(uid()); setName(''); setParts([]); setCooked(''); setLoss(0); setRemain(''); setMsg(''); };
   const startNew = () => { fresh(); setMode('edit'); };

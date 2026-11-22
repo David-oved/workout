@@ -1,23 +1,30 @@
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
-import { X, Plus, Minus, Sparkles, Camera, Paperclip, ArrowUp, ChevronDown, Star, Trash, Globe, Brain, ChevronRight, Pencil, Info } from 'lucide-preact';
+import { X, Plus, Minus, Sparkles, Camera, Paperclip, ArrowUp, ChevronDown, Star, Globe, Brain, ChevronRight, Pencil, Info, MessageSquarePlus, Utensils, History, PencilLine } from 'lucide-preact';
 import { store } from '../core/state';
 import { actions } from '../core/actions';
 import { dayInfo, fmt } from '../core/calc';
 import { addDays, dayLabel, todayKey, uid } from '../core/dates';
-import { autoMealName, partLabel, sumMacros } from '../core/meal';
+import { autoMealName, dishPer100, label, partMacros } from '../core/meal';
 import { ui, setUi, toast } from '../ui/ui';
 import { BigSheet, Sheet } from '../ui/components';
 import { aiState } from '../ai/gemini';
 import { fileToAttachment } from '../ai/image';
-import { chat, draftOf, markAdded, removeItem, resetChat, sendMessage, setDeep, setGrams, setPer, setWeb, undoAdd, type Attachment } from '../ai/chat';
+import { chat, draftOf, markAdded, removeItem, resetChat, restoreChat, sendMessage, setDeep, setGrams, setPer, setWeb, undoAdd, type Attachment } from '../ai/chat';
 import { AiSetup } from './AiChat';
 import { Messages } from './AiParts';
-import { buildCandidates, candMacros, gapSuggestions, macrosOf, makeEntries, parseEntry, searchCandidates, stepFor, topTiles, tray, trayAdd, trayAddFood, trayClear, trayPer, trayPerByFood, trayRemove, traySet, traySetName, traySetOne, type Cand, type TItem } from '../ui/tray';
+import { buildCandidates, candMacros, defaultPortion, gapSuggestions, macrosOf, makeEntries, parseEntry, searchCandidates, stepFor, topTiles, tray, trayAdd, trayAddDish, trayAddFood, trayClear, trayPer, trayPerByFood, trayRemove, traySet, traySetName, traySetOne, type Cand, type TItem } from '../ui/tray';
 import { dbState, getFood, loadDb, searchFoods, type FoodRec } from '../data/foodDb';
-import { AmtInput, FoodRow } from './FoodPicker';
+import { AmtInput, FoodPicker, FoodRow } from './FoodPicker';
 import { PotSheet } from './Pot';
 
 const Kcal = ({ m }: { m: { k: number } }) => <span class="num">{m.k}</span>;
+type Tab = 'meal' | 'food' | 'pot' | 'fav';
+const TABS: { id: Tab; label: string; hint: string }[] = [
+  { id: 'meal', label: 'ארוחות', hint: 'לחיצה מוסיפה את כל הרכיבים שלה' },
+  { id: 'food', label: 'מצרכים', hint: 'לחיצה מוסיפה מצרך אחד, ואז קובעים גרמים' },
+  { id: 'pot', label: 'סירים', hint: 'מה שבישלת, אוכלים ממנו בגרמים' },
+  { id: 'fav', label: 'מועדפים', hint: 'מה ששמרת בכוכב' },
+];
 
 export function AddScreen() {
   const open = ui.use((u) => u.addOpen);
@@ -33,9 +40,12 @@ export function AddScreen() {
 
   const [q, setQ] = useState('');
   const [view, setView] = useState<'tiles' | 'chat'>('tiles');
+  const [tab, setTab] = useState<Tab>('meal');
   const [more, setMore] = useState(false);
+  const [editTiles, setEditTiles] = useState(false);
+  const [trayOpen, setTrayOpen] = useState(true);
   const [slotOpen, setSlotOpen] = useState(false);
-  const [sheet, setSheet] = useState<null | 'manual' | 'favs' | 'pot' | 'food'>(null);
+  const [sheet, setSheet] = useState<null | 'manual' | 'pot' | 'potnew' | 'food' | 'addtile'>(null);
   const [editItem, setEditItem] = useState<TItem | null>(null);
   const [fv, setFv] = useState({ k: '', p: '', c: '', f: '' });
   const [files, setFiles] = useState<Attachment[]>([]);
@@ -51,19 +61,19 @@ export function AddScreen() {
     if (!open) return;
     trayClear();
     void loadDb();
-    setQ(''); setFiles([]); setOpenRow(null); setSlotOpen(false); setMore(false); setSheet(null); setErr('');
+    setQ(''); setFiles([]); setOpenRow(null); setSlotOpen(false); setMore(false); setSheet(null); setErr(''); setEditTiles(false); setTrayOpen(true);
     setView(addView === 'chat' || draftOf(chat.get().messages) ? 'chat' : 'tiles');
   }, [open]);
 
   const today = todayKey(s.settings.resetHour);
   const slotName = s.settings.slots.find((x) => x.id === slot)?.name ?? 'ארוחה';
-  const cands = useMemo(() => buildCandidates(slot), [s.entries, s.favorites, slot, open]);
+  const cands = useMemo(() => buildCandidates(slot), [s.entries, s.favorites, s.dishes, s.hiddenTiles, s.foodEdits, slot, open, dbReady]);
 
   // המגש: פריטים ידניים + הארוחה שה-AI בנה
   const draft = draftOf(ch.messages);
   const aiItems: TItem[] = (draft?.items ?? []).map((it) => ({
     id: it.id, name: it.name, unit: 'g', amount: it.grams, step: 10, base: 100,
-    per: { k: it.kcal100, p: it.p100, c: it.c100, f: it.f100 }, est: it.source !== 'label', src: 'ai', msgId: draft!.id, conf: it.confidence,
+    per: { k: it.kcal100, p: it.p100, c: it.c100, f: it.f100 }, est: it.source === 'estimate', src: 'ai', msgId: draft!.id, conf: it.confidence,
   }));
   const all = [...manual, ...aiItems];
   const tot = all.reduce((a, it) => { const m = macrosOf(it); return { k: a.k + m.k, p: a.p + m.p, c: a.c + m.c, f: a.f + m.f }; }, { k: 0, p: 0, c: 0, f: 0 });
@@ -72,7 +82,8 @@ export function AddScreen() {
   const remK = info.target.k - info.eaten.k - tot.k;
   const remP = Math.max(0, info.target.p - info.eaten.p - tot.p);
   const gap = gapSuggestions(cands, date, tot);
-  const tiles = topTiles(cands, more ? 12 : 6);
+  const tabCands = cands.filter((c) => (tab === 'fav' ? c.fav : c.kind === tab));
+  const tiles = topTiles(tabCands, more ? 18 : 9);
   const results = view === 'tiles' ? searchCandidates(cands, q) : [];
   const dbRes: FoodRec[] = useMemo(() => {
     if (view !== 'tiles' || !q.trim() || !dbReady) return [];
@@ -82,6 +93,7 @@ export function AddScreen() {
 
   const addCand = (c: Cand) => trayAdd(c);
   const close = () => setUi({ addOpen: false });
+  const scrollTop = () => { const b = bodyRef.current; if (b) b.scrollTo({ top: 0, behavior: 'smooth' }); };
 
   const submit = (override?: string) => {
     const t = (override ?? q).trim();
@@ -107,6 +119,17 @@ export function AddScreen() {
     setFileBusy(false);
   };
 
+  /** שיחה חדשה / מחיקת השיחה: מיידי, ואפשר לבטל */
+  const newChat = () => {
+    const snap = chat.get().messages;
+    if (!snap.length) { setView('chat'); setTimeout(() => inRef.current?.focus(), 100); return; }
+    resetChat();
+    setQ(''); setFiles([]);
+    setView('chat');
+    toast('השיחה נמחקה', () => restoreChat(snap));
+    setTimeout(() => inRef.current?.focus(), 100);
+  };
+
   useEffect(() => {
     if (view === 'chat') setTimeout(() => { const b = bodyRef.current; if (b) b.scrollTo({ top: b.scrollHeight }); }, 80);
   }, [ch.messages.length, view]);
@@ -116,6 +139,8 @@ export function AddScreen() {
 
   const setAmt = (it: TItem, v: number) => (it.src === 'ai' ? setGrams(it.msgId!, it.id, v) : traySet(it.id, v));
   const rm = (it: TItem) => (it.src === 'ai' ? removeItem(it.msgId!, it.id) : trayRemove(it.id));
+  const clearAll = () => { trayClear(); aiItems.forEach((it) => removeItem(it.msgId!, it.id)); };
+  const addMore = () => { setView('tiles'); setQ(''); scrollTop(); setTimeout(() => inRef.current?.focus(), 150); };
 
   const commit = () => {
     if (!all.length) return;
@@ -142,11 +167,11 @@ export function AddScreen() {
   const ydayEntries = s.entries.filter((e) => e.date === addDays(date, -1) && e.slot === slot);
   const copyYesterday = () => {
     for (const e of ydayEntries) {
-      if (e.parts?.length) { trayAdd({ key: e.name, name: e.name, unit: 'p', base: 1, per: { k: e.k, p: e.p, c: e.c, f: e.f }, amount: 1, est: e.est, w: 0, parts: e.parts }); continue; }
+      if (e.parts?.length) { trayAdd({ key: e.name, kind: 'meal', name: e.name, unit: 'p', base: 1, per: { k: e.k, p: e.p, c: e.c, f: e.f }, amount: 1, est: e.est, w: 0, parts: e.parts }); continue; }
       const p = parseEntry(e);
-      trayAdd({ key: p.name, name: p.name, unit: p.unit, base: p.base, per: p.per, amount: p.amount, est: e.est, w: 0 });
+      trayAdd({ key: p.name, kind: 'food', name: p.name, unit: p.unit, base: p.base, per: p.per, amount: p.amount, est: e.est, w: 0 });
     }
-    toast(`${ydayEntries.length} מנות מאתמול במגש`);
+    toast(`${ydayEntries.length} מנות מאתמול נוספו לארוחה שלך`);
   };
 
   const submitManual = () => {
@@ -161,7 +186,7 @@ export function AddScreen() {
       actions.saveCustomFood({ id: cid, name, unit, per });
       foodId = 'c:' + cid;
     }
-    trayAdd({ key: name, name, unit, base: man.per100 ? 100 : 1, per, amount: man.per100 ? 100 : 1, w: 0, foodId });
+    trayAdd({ key: name, kind: 'food', name, unit, base: man.per100 ? 100 : 1, per, amount: man.per100 ? 100 : 1, w: 0, foodId });
     setMan({ name: '', k: '', p: '', c: '', f: '', fav: false, per100: false });
     setErr('');
     setSheet(null);
@@ -203,18 +228,33 @@ export function AddScreen() {
     const last = tray.get().items.find((i) => i.foodId === f.id);
     if (last) setOpenRow(last.id);
   };
-  const favCand = (f: (typeof s.favorites)[number]): Cand => {
-    if (f.parts?.length) return { key: 'meal:' + f.name, name: f.name, unit: 'p', base: 1, per: { k: f.k, p: f.p, c: f.c, f: f.f }, amount: 1, est: f.est, w: 0, parts: f.parts };
-    const p = parseEntry({ name: f.name, k: f.k, p: f.p, c: f.c, f: f.f });
-    return { key: p.name, name: p.name, unit: p.unit, base: p.base, per: p.per, amount: p.amount, est: f.est, w: 0 };
+
+  /** שומר מצרך מהמאגר כאריח קבוע (מועדף) עם מנה טיפוסית */
+  const pinFood = (f: FoodRec) => {
+    const g = f.unit === 'g' ? defaultPortion(f.portions) : 1;
+    const m = partMacros({ amount: g, base: f.base, per: f.per });
+    const name = f.unit === 'g' ? `${f.name} · ${g} ג׳` : f.name;
+    if (s.favorites.some((x) => x.foodId === f.id || x.name === name)) { toast('האריח כבר קיים'); return; }
+    actions.toggleFavorite({ name, k: m.k, p: m.p, c: m.c, f: m.f, est: f.est, foodId: f.id });
+    setSheet(null);
+    setTab('food');
+    toast(`${f.name} נוסף לאריחים`);
+  };
+  const removeTile = (c: Cand) => {
+    const fav = s.favorites.find((x) => (x.parts?.length ? 'meal:' + x.name : x.foodId ?? parseEntry(x).name) === c.key);
+    if (tab === 'fav' && fav) { actions.toggleFavorite(fav); toast('הוסר מהמועדפים', () => actions.toggleFavorite(fav)); return; }
+    actions.hideTile(c.key);
+    toast('האריח הוסתר', () => actions.unhideTile(c.key));
   };
   const inTrayX = (c: Cand) => {
     if (c.parts) return 0;
     const it = manual.find((i) => (c.foodId ? i.foodId === c.foodId : i.name === c.name));
     return it ? Math.round((it.amount / c.amount) * 10) / 10 : 0;
   };
+  const lastUser = [...ch.messages].reverse().find((m) => m.role === 'user')?.text ?? '';
 
   const showTray = all.length > 0;
+  const tabInfo = TABS.find((t) => t.id === tab)!;
 
   return (
     <BigSheet open={open} onClose={close}>
@@ -236,7 +276,7 @@ export function AddScreen() {
 
       <div class="g as-in">
         <Sparkles />
-        <input ref={inRef} value={q} placeholder={view === 'chat' ? (ch.messages.length ? 'תקן אותי או שאל משהו…' : 'ספר לי מה אכלת…') : 'תאר, צלם או חפש…'} autocomplete="off" enterkeyhint="send"
+        <input ref={inRef} value={q} placeholder={view === 'chat' ? (ch.messages.length ? 'תקן אותי או שאל משהו…' : 'ספר לי מה אכלת…') : 'ספר ל-AI מה אכלת, או חפש מזון…'} autocomplete="off" enterkeyhint="send"
           onInput={(e) => setQ((e.target as HTMLInputElement).value)}
           onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); submit(); } }} />
         <button class="ic" aria-label="צרף תמונה או PDF" disabled={files.length >= 3} onClick={() => fileRef.current?.click()}>{view === 'chat' ? <Paperclip /> : <Camera />}</button>
@@ -255,16 +295,16 @@ export function AddScreen() {
       )}
       <input ref={fileRef} type="file" accept="image/*,application/pdf" multiple style={{ display: 'none' }} onChange={onFiles} />
 
-      <div class="as-body" ref={bodyRef} style={{ paddingBottom: showTray ? 460 : 100 }}>
+      <div class="as-body" ref={bodyRef} style={{ paddingBottom: showTray ? (trayOpen ? 430 : 190) : 100 }}>
         {view === 'chat' ? (
           <>
-            <div class="as-opts" style={{ justifyContent: 'space-between' }}>
-              <button class="as-back" onClick={() => setView('tiles')}><ChevronRight size={16} />חזרה לאריחים</button>
-              <div style={{ display: 'flex', gap: 8 }}>
+            <div class="as-chatbar">
+              <button class="as-back" onClick={() => setView('tiles')}><ChevronRight size={16} />חזרה</button>
+              <span class="as-tgs">
                 <button class={'tg' + (ch.web ? ' on' : '')} onClick={() => setWeb(!ch.web)}><Globe />אינטרנט</button>
                 <button class={'tg' + (ch.deep ? ' on' : '')} onClick={() => setDeep(!ch.deep)}><Brain />עמוק</button>
-                {ch.messages.length > 0 && <button class="tg" aria-label="שיחה חדשה" onClick={() => { if (confirm('להתחיל שיחה חדשה?')) resetChat(); }}><Trash /></button>}
-              </div>
+              </span>
+              <button class="as-new" onClick={newChat}><MessageSquarePlus />שיחה חדשה</button>
             </div>
             {!configured && <AiSetup />}
             {configured && ch.messages.length === 0 && (
@@ -303,34 +343,81 @@ export function AddScreen() {
           </div>
         ) : (
           <>
+            {ch.messages.length > 0 && (
+              <div class="g as-live">
+                <Sparkles />
+                <button class="lv" onClick={() => setView('chat')}>
+                  <b>שיחה פעילה עם ה-AI</b>
+                  <small>{lastUser.slice(0, 40) || `${ch.messages.length} הודעות`}</small>
+                </button>
+                <button class="lb" onClick={() => setView('chat')}>המשך</button>
+                <button class="lb" onClick={newChat}>חדשה</button>
+              </div>
+            )}
             {gap.list.length > 0 && (
-              <>
-                <div class="as-lbl"><span>חסר לך היום, לחיצה אחת סוגרת</span></div>
+              <div class="as-gapc">
+                <span>חסרים לך עוד {Math.round(remP)} ג׳ חלבון</span>
                 <div class="as-gap">
-                  {gap.list.map((c) => <button class="as-gc" key={c.key} onClick={() => addCand(c)}><Plus />{c.name} · +{candMacros(c).p} ח׳</button>)}
+                  {gap.list.map((c) => <button class="as-gc" key={c.key} onClick={() => addCand(c)}><Plus />{label(c.name)} · +{candMacros(c).p} ח׳</button>)}
                 </div>
+              </div>
+            )}
+
+            <div class="as-tabs" role="tablist">
+              {TABS.map((t) => <button role="tab" class={tab === t.id ? 'on' : ''} onClick={() => { setTab(t.id); setMore(false); }}>{t.label}</button>)}
+            </div>
+            <div class="as-lbl">
+              <span>{tabInfo.hint}</span>
+              {tab !== 'pot' && <button class={'as-ed' + (editTiles ? ' on' : '')} onClick={() => setEditTiles((v) => !v)}><PencilLine />{editTiles ? 'סיימתי' : 'ערוך אריחים'}</button>}
+            </div>
+
+            {tab === 'pot' ? (
+              <div class="as-res">
+                {s.dishes.length === 0 && <div class="as-emp">עוד לא שמרת סיר. בישלת משהו? הכנס מצרכים ומשקל וקבל ערכים מדויקים.</div>}
+                {s.dishes.map((d) => {
+                  const p = dishPer100(d);
+                  return (
+                    <button class="as-row" key={d.id} onClick={() => { trayAddDish(d); const it = tray.get().items.find((i) => i.foodId === 'd:' + d.id); if (it) setOpenRow(it.id); }}>
+                      <div><b>{d.name}</b><small class="num">{Math.round(p.k)} קל׳ ל-100 ג׳{d.remainG != null ? ` · נשארו ${Math.round(d.remainG)} ג׳` : ''}</small></div>
+                      <span class="pot-eat"><Utensils />אכלתי</span>
+                    </button>
+                  );
+                })}
+                <div class="as-act2">
+                  <button onClick={() => setSheet('potnew')}><Plus />סיר חדש</button>
+                  {s.dishes.length > 0 && <button onClick={() => setSheet('pot')}><Pencil />עריכה ומחיקה</button>}
+                </div>
+              </div>
+            ) : (
+              <>
+                {tiles.length === 0 && <div class="as-emp">{tab === 'fav' ? 'אין מועדפים. לחץ על ⭐ בארוחה או במצרך כדי לשמור אותם כאן.' : 'אין אריחים להצגה.'}</div>}
+                <div class="as-grid">
+                  {tiles.map((c) => {
+                    const n = inTrayX(c);
+                    const m = candMacros(c);
+                    return (
+                      <div class={'as-tw' + (editTiles ? ' ed' : '')} key={c.key}>
+                        <button class={'as-tile' + (n ? ' on' : '')} onClick={() => (editTiles ? removeTile(c) : addCand(c))}>
+                          <span class="bd num">×{n}</span>
+                          <b>{c.name}</b>
+                          <small class="num">{c.note ?? (c.unit === 'g' ? `${c.amount} ג׳` : '')}{c.note || c.unit === 'g' ? ' · ' : ''}{m.k} קל׳</small>
+                        </button>
+                        {editTiles && <span class="as-xx" aria-hidden="true"><X /></span>}
+                      </div>
+                    );
+                  })}
+                  {editTiles && tab === 'food' && (
+                    <button class="as-tile add" onClick={() => setSheet('addtile')}><Plus /><b>הוסף אריח</b></button>
+                  )}
+                </div>
+                {editTiles && <div class="mu" style={{ fontSize: 12, margin: '8px 4px 0', lineHeight: 1.5 }}>לחיצה על אריח מסתירה אותו.{tab === 'meal' ? ' כדי להוסיף ארוחה: בנה אותה ולחץ על ⭐.' : ''}{s.hiddenTiles.length > 0 && <> <button class="lnk" onClick={() => s.hiddenTiles.forEach((k) => actions.unhideTile(k))}>החזר {s.hiddenTiles.length} אריחים מוסתרים</button></>}</div>}
+                {tabCands.length > 9 && !editTiles && <button class="as-mr" onClick={() => setMore((v) => !v)}>{more ? 'הצג פחות' : 'הצג עוד'}</button>}
               </>
             )}
-            <div class="as-lbl"><span>הרגילים שלך</span><span>לפי {slotName}</span></div>
-            <div class="as-grid">
-              {tiles.map((c) => {
-                const n = inTrayX(c);
-                const m = candMacros(c);
-                return (
-                  <button class={'as-tile' + (n ? ' on' : '')} key={c.key} onClick={() => addCand(c)}>
-                    <span class="bd num">×{n}</span>
-                    <b>{c.name}</b>
-                    <small class="num">{c.note ?? (c.unit === 'g' ? `${c.amount} ג׳ · ${m.k} קל׳` : `${m.k} קל׳`)}{c.note ? ` · ${m.k} קל׳` : ''}</small>
-                  </button>
-                );
-              })}
-            </div>
+
             <div class="as-more">
-              <button onClick={() => setMore((v) => !v)}>{more ? 'פחות' : 'עוד'}</button>
-              <button onClick={() => setSheet('favs')}>מועדפים</button>
-              <button disabled={!ydayEntries.length} onClick={copyYesterday}>אתמול</button>
-              <button onClick={() => setSheet('pot')}>סיר</button>
-              <button onClick={() => setSheet('manual')}>ידני</button>
+              <button disabled={!ydayEntries.length} onClick={copyYesterday}><History />כמו אתמול</button>
+              <button onClick={() => setSheet('manual')}><PencilLine />הזנה ידנית</button>
             </div>
           </>
         )}
@@ -338,91 +425,89 @@ export function AddScreen() {
 
       {showTray && (
         <div class="g as-tray">
-          {all.length >= 2 && (
-            <div class="as-mh">
-              {trayS.one ? (
-                <input class="as-mn" value={trayS.name} placeholder={autoMealName(all)} aria-label="שם הארוחה" onInput={(e) => traySetName((e.target as HTMLInputElement).value)} />
-              ) : <span class="as-mn mu">כל פריט יירשם בנפרד</span>}
-              <span class="as-seg">
-                <button class={trayS.one ? 'on' : ''} onClick={() => traySetOne(true)}>ארוחה אחת</button>
-                <button class={!trayS.one ? 'on' : ''} onClick={() => traySetOne(false)}>נפרדים</button>
-              </span>
-              {trayS.one && (
-                <button class="as-rm" aria-label="שמור ארוחה למועדפים" onClick={() => {
-                  const nm = trayS.name.trim() || autoMealName(all);
-                  const ps = makeEntries(all, store.get(), true, nm)[0];
-                  actions.toggleFavorite({ name: nm, k: ps.k, p: ps.p, c: ps.c, f: ps.f, est: ps.est, parts: ps.parts });
-                  toast('הארוחה נשמרה במועדפים');
-                }}><Star /></button>
+          <button class="as-th" onClick={() => setTrayOpen((v) => !v)}>
+            <b>הארוחה שלך</b>
+            <span class="num">{all.length} {all.length === 1 ? 'רכיב' : 'רכיבים'} · {fmt(tot.k)} קל׳</span>
+            <ChevronDown class={trayOpen ? '' : 'flip'} />
+          </button>
+          {trayOpen && (
+            <>
+              {all.length >= 2 && trayS.one && (
+                <input class="as-mn" value={trayS.name} placeholder={`שם: ${autoMealName(all)}`} aria-label="שם הארוחה" onInput={(e) => traySetName((e.target as HTMLInputElement).value)} />
               )}
-            </div>
-          )}
-          <div class="as-tr">
-            {all.map((it) => {
-              const m = macrosOf(it);
-              const isG = it.unit === 'g';
-              const rec = it.foodId && !it.foodId.startsWith('d:') ? getFood(it.foodId, s) : undefined;
-              const isDish = !!it.foodId?.startsWith('d:');
-              const st = stepFor(it);
-              return (
-                <div class="as-it" key={it.id}>
-                  <div class="as-ih">
-                    <button class="nm" onClick={() => setOpenRow(openRow === it.id ? null : it.id)}>{it.name}{it.src === 'ai' && it.est ? <i class="etag" style={{ marginRight: 6 }}>הערכה</i> : null}</button>
-                    <span class="as-st">
-                      <button aria-label="הפחת" onClick={() => setAmt(it, it.amount - st)}><Minus /></button>
-                      <span class="num">{isG ? `${Math.round(it.amount)} ג׳` : `×${it.amount}`}</span>
-                      <button aria-label="הוסף" onClick={() => setAmt(it, it.amount + st)}><Plus /></button>
-                    </span>
-                    <span class="as-ik num"><Kcal m={m} /></span>
-                    <button class="as-rm" aria-label="הסר" onClick={() => rm(it)}><X /></button>
-                  </div>
-                  {openRow === it.id && (
-                    <div class="as-det">
-                      <div class="as-amt">
-                        <AmtInput wide value={it.amount} onChange={(n) => setAmt(it, n)} suffix={isG ? 'גרם' : 'מנות'} />
-                        <span class="as-mac num"><i class="m1">{m.p} ח׳</i><i class="m2">{m.c} פ׳</i><i class="m3">{m.f} ש׳</i></span>
+              <div class="as-tr">
+                {all.map((it) => {
+                  const m = macrosOf(it);
+                  const isG = it.unit === 'g';
+                  const rec = it.foodId && !it.foodId.startsWith('d:') ? getFood(it.foodId, s) : undefined;
+                  const isDish = !!it.foodId?.startsWith('d:');
+                  const st = stepFor(it);
+                  return (
+                    <div class="as-it" key={it.id}>
+                      <div class="as-ih">
+                        <button class="nm" onClick={() => setOpenRow(openRow === it.id ? null : it.id)}>{it.name}{it.src === 'ai' && it.est ? <i class="etag" style={{ marginRight: 6 }}>הערכה</i> : null}</button>
+                        <span class="as-st">
+                          <button aria-label="הפחת" onClick={() => setAmt(it, it.amount - st)}><Minus /></button>
+                          <span class="num">{isG ? `${Math.round(it.amount)} ג׳` : `×${it.amount}`}</span>
+                          <button aria-label="הוסף" onClick={() => setAmt(it, it.amount + st)}><Plus /></button>
+                        </span>
+                        <span class="as-ik num"><Kcal m={m} /></span>
+                        <button class="as-rm" aria-label="הסר" onClick={() => rm(it)}><X /></button>
                       </div>
-                      {isG && (it.portions?.length ?? 0) > 0 && (
-                        <div class="as-pc">
-                          {it.portions!.map((pt) => <button class="chip" onClick={() => setAmt(it, it.amount + pt.g)}>+ {pt.l} · {pt.g} ג׳</button>)}
+                      {openRow === it.id && (
+                        <div class="as-det">
+                          <div class="as-amt">
+                            <AmtInput wide value={it.amount} onChange={(n) => setAmt(it, n)} suffix={isG ? 'גרם' : 'מנות'} />
+                            <span class="as-mac num"><i class="m1">{m.p} ח׳</i><i class="m2">{m.c} פ׳</i><i class="m3">{m.f} ש׳</i></span>
+                          </div>
+                          {isG && (it.portions?.length ?? 0) > 0 && (
+                            <div class="as-pc">
+                              {it.portions!.map((pt) => <button class="chip" onClick={() => setAmt(it, it.amount + pt.g)}>+ {pt.l} · {pt.g} ג׳</button>)}
+                            </div>
+                          )}
+                          <input type="range" style={{ accentColor: '#5CE1A8', width: '100%' }} min={isG ? 5 : 0.5} max={isG ? Math.max(600, Math.round(it.amount * 1.5)) : Math.max(6, it.amount * 2)} step={isG ? 5 : 0.5} value={it.amount}
+                            onInput={(e) => setAmt(it, Number((e.target as HTMLInputElement).value))} />
+                          <div class="as-acts">
+                            {!isDish && <button onClick={() => openFood(it)}><Pencil />ערוך ערכים</button>}
+                            <button onClick={() => { actions.toggleFavorite({ name: isG ? `${it.name} · ${Math.round(it.amount)} ג׳` : it.name, k: m.k, p: m.p, c: m.c, f: m.f, est: it.est, foodId: it.foodId && !it.foodId.startsWith('d:') ? it.foodId : undefined }); toast('נשמר במועדפים'); }}><Star />למועדפים</button>
+                          </div>
+                          {rec?.full && <div class="as-src"><Info />{rec.full}{rec.src === 'il' ? ' · מאגר משרד הבריאות' : ''}{rec.edited ? ' · ערכים מתוקנים על ידך' : ''}</div>}
+                          {isDish && <div class="as-src"><Info />סיר שלך: הערכים לפי המצרכים והמשקל אחרי הבישול</div>}
                         </div>
                       )}
-                      <input type="range" style={{ accentColor: '#5CE1A8', width: '100%' }} min={isG ? 5 : 0.5} max={isG ? Math.max(600, Math.round(it.amount * 1.5)) : Math.max(6, it.amount * 2)} step={isG ? 5 : 0.5} value={it.amount}
-                        onInput={(e) => setAmt(it, Number((e.target as HTMLInputElement).value))} />
-                      <div class="as-acts">
-                        {!isDish && <button onClick={() => openFood(it)}><Pencil />ערוך ערכים</button>}
-                        <button onClick={() => { actions.toggleFavorite({ name: isG ? `${it.name} · ${Math.round(it.amount)} ג׳` : it.name, k: m.k, p: m.p, c: m.c, f: m.f, est: it.est }); toast('נשמר במועדפים'); }}><Star />למועדפים</button>
-                      </div>
-                      {rec?.full && <div class="as-src"><Info />{rec.full}{rec.src === 'il' ? ' · מאגר משרד הבריאות' : ''}{rec.edited ? ' · ערכים מתוקנים על ידך' : ''}</div>}
-                      {isDish && <div class="as-src"><Info />סיר שלך: הערכים לפי המצרכים והמשקל אחרי הבישול</div>}
                     </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
+                  );
+                })}
+              </div>
+              <div class="as-ta">
+                <button onClick={addMore}><Plus />הוסף רכיב</button>
+                {all.length >= 2 && trayS.one && (
+                  <button aria-label="שמור את הארוחה למועדפים" onClick={() => {
+                    const nm = trayS.name.trim() || autoMealName(all);
+                    const ps = makeEntries(all, store.get(), true, nm)[0];
+                    actions.toggleFavorite({ name: nm, k: ps.k, p: ps.p, c: ps.c, f: ps.f, est: ps.est, parts: ps.parts });
+                    toast('הארוחה נשמרה במועדפים');
+                  }}><Star />שמור ארוחה</button>
+                )}
+                {all.length >= 2 && <button onClick={() => traySetOne(!trayS.one)}>{trayS.one ? 'פצל לפריטים' : 'אחד לארוחה'}</button>}
+                <button onClick={clearAll}>נקה</button>
+              </div>
+            </>
+          )}
           <div class="as-tot">
             <b class="num">{fmt(tot.k)} קל׳</b>
             <span class="num"><span class="m1">{tot.p} ח׳</span> · <span class="m2">{tot.c} פ׳</span> · <span class="m3">{tot.f} ש׳</span></span>
           </div>
-          <button class="as-cta" onClick={commit}>הוסף ל{slotName}</button>
+          <button class="as-cta" onClick={commit}>
+            {all.length >= 2 && trayS.one ? `הוסף ל${slotName} כארוחה אחת` : `הוסף ל${slotName}`}
+          </button>
         </div>
       )}
 
-      <Sheet open={sheet === 'favs'} onClose={() => setSheet(null)}>
-        <h3>מועדפים</h3>
-        {s.favorites.length === 0 ? <div class="mu" style={{ padding: '14px 0' }}>עוד אין מועדפים. בעריכת פריט או ארוחה במגש לוחצים על הכוכב כדי לשמור.</div> : (
-          <div class="as-res" style={{ marginTop: 10 }}>
-            {s.favorites.map((f) => (
-              <div class="as-row" key={f.id}>
-                <button style={{ flex: 1, textAlign: 'right' }} onClick={() => { trayAdd(favCand(f)); setSheet(null); }}>
-                  <b>{f.name}</b><small class="num" style={{ display: 'block' }}>{f.parts?.length ? `${f.parts.length} רכיבים · ` : ''}{f.k} קל׳ · {f.p} ח׳</small>
-                </button>
-                <button class="star on" aria-label="הסר" onClick={() => actions.toggleFavorite(f)}><Star fill="currentColor" /></button>
-              </div>
-            ))}
-          </div>
-        )}
+      <Sheet open={sheet === 'addtile'} onClose={() => setSheet(null)}>
+        <h3>הוסף אריח</h3>
+        <div class="mu" style={{ fontSize: 13, margin: '2px 0 10px' }}>חפש מצרך, והוא יופיע בלשונית "מצרכים" עם מנה טיפוסית.</div>
+        <FoodPicker autoFocus onPick={pinFood} placeholder="חפש מצרך…" />
       </Sheet>
 
       <Sheet open={sheet === 'manual'} onClose={() => setSheet(null)}>
@@ -441,7 +526,7 @@ export function AddScreen() {
           <button class="full" style={{ display: 'flex', alignItems: 'center', gap: 10, color: 'var(--mu)', fontSize: 14 }} onClick={() => setMan({ ...man, fav: !man.fav })}>
             <span class={'tgl' + (man.fav ? ' on' : '')} style={{ width: 44, height: 26 }} />שמור במאגר שלי (יופיע בחיפוש)
           </button>
-          <button class="btn primary block full" onClick={submitManual}>הוסף למגש</button>
+          <button class="btn primary block full" onClick={submitManual}>הוסף לארוחה</button>
         </div>
       </Sheet>
 
@@ -470,7 +555,7 @@ export function AddScreen() {
         )}
       </Sheet>
 
-      <PotSheet open={sheet === 'pot'} onClose={() => setSheet(null)} />
+      <PotSheet open={sheet === 'pot' || sheet === 'potnew'} forceNew={sheet === 'potnew'} onClose={() => setSheet(null)} />
     </BigSheet>
   );
 }

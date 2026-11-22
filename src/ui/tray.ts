@@ -4,7 +4,7 @@ import { uid } from '../core/dates';
 import { dayInfo } from '../core/calc';
 import { autoMealName, dishPer100, dishSub, partMacros, sumMacros } from '../core/meal';
 import { BUILTIN_FOODS, PORTION_G } from '../data/foods';
-import { getFood, type FoodRec } from '../data/foodDb';
+import { BUILTIN_DUP, getFood, type FoodRec } from '../data/foodDb';
 import type { Dish, Entry, Macros, Part, Portion, State } from '../core/types';
 
 /**
@@ -34,6 +34,8 @@ export const tray = createStore<{ items: TItem[]; name: string; one: boolean }>(
 /** מועמד לאריח או לתוצאת חיפוש */
 export interface Cand {
   key: string;
+  kind: 'meal' | 'food' | 'pot'; // ארוחה מוכנה | מצרך בודד | סיר
+  fav?: boolean;
   name: string;
   unit: 'g' | 'p';
   base: number;
@@ -84,7 +86,7 @@ export function foodPortions(foodId?: string): Portion[] | undefined {
   return getFood(foodId, store.get())?.portions;
 }
 
-export const defaultPortion = (ps: Portion[]) => (ps.find((p) => !p.l.startsWith('כף')) ?? ps[0])?.g ?? 100;
+export const defaultPortion = (ps: Portion[]) => (ps.find((p) => !p.l.startsWith('כף')) ?? ps[ps.length - 1])?.g ?? 100;
 
 export const portionOfDish = (d: Dish) => Math.min(Math.round(d.cookedG / 10) * 10 || 250, 300);
 
@@ -154,8 +156,10 @@ export function parseEntry(e: Pick<Entry, 'name' | 'k' | 'p' | 'c' | 'f'>): { na
 /** כל מה שאפשר להציע בלחיצה: מה שאכלת (לפי תדירות ושעה), סירים, מועדפים, ומנות פתיחה */
 export function buildCandidates(slot: string): Cand[] {
   const s = store.get();
+  const hidden = new Set(s.hiddenTiles);
   const map = new Map<string, Cand>();
   const upsert = (c: Cand) => {
+    if (hidden.has(c.key)) return;
     const cur = map.get(c.key);
     if (cur) { cur.w += c.w; return; }
     map.set(c.key, c);
@@ -163,8 +167,8 @@ export function buildCandidates(slot: string): Cand[] {
   for (const d of s.dishes) {
     const portion = portionOfDish(d);
     upsert({
-      key: 'd:' + d.id, name: d.name, unit: 'g', base: 100, per: dishPer100(d), amount: Math.min(portion, d.remainG ?? portion), w: 5 + (d.last && Date.now() - d.last < 3 * 86400_000 ? 2 : 0),
-      foodId: 'd:' + d.id, portions: [{ l: 'מנה', g: portion }], note: d.remainG != null ? `סיר · נשארו ${Math.round(d.remainG)} ג׳` : 'סיר שלי',
+      key: 'd:' + d.id, kind: 'pot', name: d.name, unit: 'g', base: 100, per: dishPer100(d), amount: Math.min(portion, d.remainG ?? portion), w: 5 + (d.last && Date.now() - d.last < 3 * 86400_000 ? 2 : 0),
+      foodId: 'd:' + d.id, portions: [{ l: 'מנה', g: portion }], note: d.remainG != null ? `נשארו ${Math.round(d.remainG)} ג׳` : 'סיר שלי',
     });
   }
   const newest = [...s.entries].sort((a, b) => b.ts - a.ts);
@@ -174,38 +178,45 @@ export function buildCandidates(slot: string): Cand[] {
     if (ageDays > 60) continue;
     const w = 1 + (e.slot === slot ? 2 : 0) + (ageDays < 7 ? 1 : 0);
     if (e.parts && e.parts.length > 1) {
-      upsert({ key: 'meal:' + e.name, name: e.name, unit: 'p', base: 1, per: { k: e.k, p: e.p, c: e.c, f: e.f }, amount: 1, est: e.est, w, parts: e.parts, note: `${e.parts.length} רכיבים` });
+      upsert({ key: 'meal:' + e.name, kind: 'meal', name: e.name, unit: 'p', base: 1, per: { k: e.k, p: e.p, c: e.c, f: e.f }, amount: 1, est: e.est, w, parts: e.parts, note: `${e.parts.length} רכיבים` });
       continue;
     }
     if (e.parts?.length === 1) {
       const p = e.parts[0];
-      upsert({ key: p.foodId ?? p.name, name: p.name, unit: p.unit, base: p.base, per: p.per, amount: p.amount, est: p.est, w, foodId: p.foodId, portions: foodPortions(p.foodId) });
+      upsert({ key: p.foodId ?? p.name, kind: 'food', name: p.name, unit: p.unit, base: p.base, per: p.per, amount: p.amount, est: p.est, w, foodId: p.foodId, portions: foodPortions(p.foodId) });
       continue;
     }
     const p = parseEntry(e);
-    upsert({ key: p.name, name: p.name, unit: p.unit, base: p.base, per: p.per, amount: p.amount, est: e.est, w });
+    upsert({ key: p.name, kind: 'meal', name: p.name, unit: p.unit, base: p.base, per: p.per, amount: p.amount, est: e.est, w });
   }
   for (const fav of s.favorites) {
     if (fav.parts?.length) {
-      upsert({ key: 'meal:' + fav.name, name: fav.name, unit: 'p', base: 1, per: { k: fav.k, p: fav.p, c: fav.c, f: fav.f }, amount: 1, est: fav.est, w: 3, parts: fav.parts, note: `${fav.parts.length} רכיבים` });
+      upsert({ key: 'meal:' + fav.name, kind: 'meal', name: fav.name, unit: 'p', base: 1, per: { k: fav.k, p: fav.p, c: fav.c, f: fav.f }, amount: 1, est: fav.est, w: 3, parts: fav.parts, note: `${fav.parts.length} רכיבים`, fav: true });
       continue;
     }
     const p = parseEntry({ name: fav.name, k: fav.k, p: fav.p, c: fav.c, f: fav.f });
-    upsert({ key: p.name, name: p.name, unit: p.unit, base: p.base, per: p.per, amount: p.amount, est: fav.est, w: 3 });
+    upsert({ key: fav.foodId ?? p.name, kind: p.unit === 'g' ? 'food' : 'meal', name: p.name, unit: p.unit, base: p.base, per: p.per, amount: p.amount, est: fav.est, w: 3, foodId: fav.foodId, portions: foodPortions(fav.foodId), fav: true });
   }
   // בלי היסטוריה עדיין: מנות פתיחה סבירות למאסה
-  const STARTERS = ['שייק חלבון', 'ביצים ולחם', 'לחמנייה עם גבינה צהובה', 'חזה עוף מבושל', 'אורז מבושל', 'בננה', 'יוגורט חלבון', 'פיתה', 'חטיף חלבון'];
+  const STARTERS = ['שייק חלבון', 'ביצים ולחם', 'לחמנייה עם גבינה צהובה', 'יוגורט חלבון', 'חטיף חלבון', 'סנדוויץ׳ טונה', 'שווארמה בפיתה', 'פסטה ברוטב עגבניות'];
   for (const b of BUILTIN_FOODS) {
+    if (BUILTIN_DUP.has(b.name)) continue;
     const gr = PORTION_G[b.name];
     const idx = STARTERS.indexOf(b.name);
     const w = 0.1 + (idx >= 0 ? 0.5 - idx * 0.03 : 0);
     if (gr) {
       const f = 100 / gr;
-      upsert({ key: b.name, name: b.name, unit: 'g', base: 100, per: { k: b.k * f, p: b.p * f, c: b.c * f, f: b.f * f }, amount: gr, est: true, w, portions: [{ l: b.unit ?? 'מנה', g: gr }] });
+      upsert({ key: b.name, kind: 'meal', name: b.name, unit: 'g', base: 100, per: { k: b.k * f, p: b.p * f, c: b.c * f, f: b.f * f }, amount: gr, est: true, w, portions: [{ l: b.unit ?? 'מנה', g: gr }] });
     } else {
-      upsert({ key: b.name, name: b.name, unit: 'p', base: 1, per: { k: b.k, p: b.p, c: b.c, f: b.f }, amount: 1, est: true, w });
+      upsert({ key: b.name, kind: 'meal', name: b.name, unit: 'p', base: 1, per: { k: b.k, p: b.p, c: b.c, f: b.f }, amount: 1, est: true, w });
     }
   }
+  // מצרכים נפוצים מהמאגר (אחרי שנטען)
+  const FOOD_STARTERS = ['il:1561', 'il:805', 'il:2721', 'il:2062', 'il:10076', 'il:9707', 'il:500', 'il:1955', 'il:1858', 'il:8608', 'il:3663', 'il:3793', 'il:3223', 'il:15', 'il:2730', 'il:4443'];
+  FOOD_STARTERS.forEach((id, i) => {
+    const r = getFood(id, s);
+    if (r) upsert({ key: r.id, kind: 'food', name: r.name, unit: r.unit, base: r.base, per: r.per, amount: defaultPortion(r.portions), est: r.est, w: 0.5 - i * 0.02, foodId: r.id, portions: r.portions });
+  });
   return [...map.values()];
 }
 

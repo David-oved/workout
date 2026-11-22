@@ -516,3 +516,64 @@ select.inp{background-image:none}
 .part-r .pn small{font-size:12px;color:var(--mu)}
 .part-r .pk{font-size:13px;color:var(--mu);min-width:40px;text-align:left}
 .sub-l{margin:2px 0 6px;padding:0 4px;font-size:12px;color:var(--mu2);line-height:1.6}
+
+/* ===== מסך הוספה: ניקוי וסדר ===== */
+.as-tabs{display:flex;padding:3px;border-radius:20px;background:rgba(255,255,255,.07);margin:2px 0 8px}
+.as-tabs button{flex:1;height:36px;border-radius:17px;font-size:14px;color:var(--mu);transition:background .25s,color .25s}
+.as-tabs button.on{background:rgba(255,255,255,.16);color:#fff;font-weight:600}
+.as-lbl{align-items:center;gap:8px}
+.as-lbl>span:first-child{flex:1;min-width:0}
+.as-ed{display:inline-flex;align-items:center;gap:5px;font-size:12.5px;color:var(--mu);flex:none;height:28px;padding:0 10px;border-radius:14px;background:rgba(255,255,255,.06)}
+.as-ed svg{width:13px;height:13px}
+.as-ed.on{background:var(--accent);color:var(--accent-d);font-weight:600}
+.as-tw{position:relative}
+.as-tw .as-tile{width:100%}
+.as-xx{position:absolute;top:6px;left:6px;width:22px;height:22px;border-radius:50%;background:rgba(255,92,92,.9);display:flex;align-items:center;justify-content:center;pointer-events:none}
+.as-xx svg{width:13px;height:13px;color:#fff}
+.as-tw.ed .as-tile{animation:wob .35s ease-in-out infinite alternate}
+@keyframes wob{from{transform:rotate(-.8deg)}to{transform:rotate(.8deg)}}
+.as-tile.add{align-items:center;justify-content:center;gap:6px;border-style:dashed;color:var(--accent);background:transparent}
+.as-tile.add svg{width:22px;height:22px}
+.as-tile.add b{font-size:13px;color:var(--accent)}
+.as-mr{display:block;margin:10px auto 0;font-size:13px;color:var(--mu);padding:6px 14px}
+.as-more{margin-top:14px}
+.as-more button{display:inline-flex;align-items:center;justify-content:center;gap:6px}
+.as-more button svg{width:15px;height:15px}
+.as-emp{padding:18px 8px;line-height:1.6;color:var(--mu);font-size:14px;text-align:center}
+.as-act2{display:flex;gap:8px;margin-top:4px}
+.as-act2 button{flex:1;height:44px;border-radius:22px;background:rgba(255,255,255,.07);border:.5px solid rgba(255,255,255,.12);display:inline-flex;align-items:center;justify-content:center;gap:6px;font-size:14px}
+.as-act2 button svg{width:15px;height:15px}
+.as-gapc{display:flex;flex-direction:column;gap:8px;padding:12px 14px;border-radius:20px;background:rgba(138,180,255,.09);border:.5px solid rgba(138,180,255,.28);margin-bottom:12px;font-size:13.5px;color:var(--cc)}
+.as-gapc .as-gap{flex-wrap:wrap;overflow:visible;margin:0}
+.as-gc{height:38px}
+.as-live{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:22px;margin-bottom:12px}
+.as-live>svg{width:20px;height:20px;color:var(--accent);flex:none}
+.as-live .lv{flex:1;min-width:0;text-align:right}
+.as-live .lv b{display:block;font-size:14.5px;font-weight:500}
+.as-live .lv small{display:block;font-size:12px;color:var(--mu);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.as-live .lb{height:34px;padding:0 12px;border-radius:17px;background:rgba(255,255,255,.1);font-size:13px;flex:none}
+.as-live .lb:last-child{background:var(--accent);color:var(--accent-d);font-weight:600}
+.as-chatbar{display:flex;align-items:center;gap:8px;margin:0 0 10px;flex-wrap:wrap}
+.as-chatbar .as-back{margin:0}
+.as-tgs{display:flex;gap:6px;flex:1;justify-content:center}
+.as-new{display:inline-flex;align-items:center;gap:6px;height:36px;padding:0 14px;border-radius:18px;background:var(--accent);color:var(--accent-d);font-size:14px;font-weight:600;flex:none}
+.as-new svg{width:16px;height:16px}
+.as-th{display:flex;align-items:center;gap:10px;width:100%;padding:2px 4px 8px;text-align:right}
+.as-th b{font-size:16px;font-weight:600}
+.as-th span{flex:1;font-size:13px;color:var(--mu)}
+.as-th svg{width:18px;height:18px;color:var(--mu);transition:transform .3s}
+.as-th svg.flip{transform:rotate(180deg)}
+.as-mn{width:100%;margin:0 0 6px;box-sizing:border-box}
+.as-ta{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap}
+.as-ta button{height:32px;padding:0 12px;border-radius:16px;background:rgba(255,255,255,.07);border:.5px solid rgba(255,255,255,.1);font-size:12.5px;display:inline-flex;align-items:center;gap:5px;color:rgba(255,255,255,.82)}
+.as-ta button:first-child{color:var(--accent);border-color:rgba(92,225,168,.4)}
+.as-ta button svg{width:13px;height:13px}
+.as-tr{max-height:min(230px,30vh)}
+.lnk{color:var(--accent);text-decoration:underline;font-size:12px}
+.as-gapc{flex-direction:row;flex-wrap:wrap;align-items:center;gap:8px;padding:8px 12px;font-size:13px}
+.as-gapc>span{flex:none}
+.as-gapc .as-gap{flex:1;display:flex;flex-wrap:wrap;gap:6px;min-width:0}
+.as-gc{height:32px;padding:0 10px;font-size:13px;gap:5px;max-width:100%}
+.as-gc svg{width:13px;height:13px}
+.as-tgs{order:3;flex:1 1 100%;justify-content:flex-start}
+.as-new{margin-inline-start:auto}

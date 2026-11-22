@@ -34,6 +34,7 @@ export interface Food extends Macros {
   unit?: string;
   est?: boolean;
   parts?: Part[];
+  foodId?: string; // מצרך מהמאגר (כדי לשמור מנות וגרמים מדויקים)
 }
 
 /** סיר/מתכון שמור: מצרכים גולמיים, משקל אחרי בישול ואחוז שומן שנשפך */
@@ -99,5 +100,6 @@ export interface State {
   dishes: Dish[];
   foodEdits: Record<string, FoodEdit>;
   customFoods: CustomFood[];
+  hiddenTiles: string[]; // אריחים שהסתרת ממסך ההוספה
   meta: { createdAt: number; lastBackup?: number };
 }

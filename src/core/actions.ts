@@ -60,6 +60,12 @@ export const actions = {
     update((s) => ({ ...s, customFoods: s.customFoods.filter((x) => x.id !== id) }));
   },
 
+  hideTile(key: string) {
+    update((s) => ({ ...s, hiddenTiles: s.hiddenTiles.includes(key) ? s.hiddenTiles : [...s.hiddenTiles, key] }));
+  },
+  unhideTile(key: string) {
+    update((s) => ({ ...s, hiddenTiles: s.hiddenTiles.filter((x) => x !== key) }));
+  },
   toggleFavorite(food: Omit<Food, 'id'> & { id?: string }) {
     update((s) => {
       const hit = s.favorites.find((x) => x.name === food.name);

@@ -232,6 +232,10 @@ export async function sendMessage(text: string, files: Attachment[]) {
 
 export const retryLast = () => (chat.get().busy ? undefined : runTurn());
 
+export function restoreChat(messages: Msg[]) {
+  setChat((s) => ({ ...s, messages, busy: false }));
+}
+
 export function resetChat() {
   fileData.clear();
   setChat((s) => ({ messages: [], busy: false, web: s.web, deep: false }));
