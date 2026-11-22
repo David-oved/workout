@@ -38,6 +38,18 @@ const headers = (token: string) => ({
   'X-GitHub-Api-Version': '2022-11-28',
 });
 
+/** הודעת שגיאה ברורה מתשובת GitHub (כולל ההודעה המקורית לאבחון) */
+async function ghError(r: Response, write = false): Promise<string> {
+  let raw = '';
+  try { raw = (await r.json())?.message ?? ''; } catch { /* ignore */ }
+  const tail = raw ? ` (${raw})` : '';
+  if (r.status === 401) return 'הטוקן לא תקין או שפג תוקפו' + tail;
+  if (r.status === 403 || (write && r.status === 404)) {
+    return 'לטוקן חסרה הרשאת כתיבה. ב-GitHub: Repository permissions ← Contents ← Read and write' + tail;
+  }
+  return `שגיאה מ-GitHub (${r.status})` + tail;
+}
+
 function b64(s: string) {
   const bytes = new TextEncoder().encode(s);
   let bin = '';
@@ -58,6 +70,9 @@ export async function verifyToken(token: string): Promise<{ ok: boolean; msg?: s
     if (!r.ok) return { ok: false, msg: `שגיאה מ-GitHub (${r.status})` };
     const j = await r.json();
     if (!j?.permissions?.push) return { ok: false, msg: 'לטוקן חסרה הרשאת Contents: Read and write' };
+    // בדיקה שההרשאה Contents באמת קיימת על הטוקן (לא רק על החשבון)
+    const c = await fetch(`https://api.github.com/repos/${CAL_REPO}/contents/README.md`, { headers: headers(token) });
+    if (!c.ok) return { ok: false, msg: await ghError(c) };
     return { ok: true };
   } catch {
     return { ok: false, msg: 'אין חיבור לאינטרנט' };
@@ -115,7 +130,7 @@ export async function syncFeed(force = false) {
       let sha: string | undefined;
       const g = await fetch(`${url}?ref=main&t=${Date.now()}`, { headers: headers(token), cache: 'no-store' });
       if (g.ok) sha = (await g.json()).sha;
-      else if (g.status !== 404) throw new Error(g.status === 401 ? 'הטוקן לא תקין' : `GitHub ${g.status}`);
+      else if (g.status !== 404) throw new Error(await ghError(g));
 
       const p = await fetch(url, {
         method: 'PUT',
@@ -129,7 +144,7 @@ export async function syncFeed(force = false) {
         feedState.set({ status: 'ok', at });
         return;
       }
-      if (p.status !== 409 && p.status !== 422) throw new Error(p.status === 401 ? 'הטוקן לא תקין' : `GitHub ${p.status}`);
+      if (p.status !== 409 && p.status !== 422) throw new Error(await ghError(p, true));
     }
     throw new Error('העדכון נדחה, נסה שוב');
   } catch (e) {

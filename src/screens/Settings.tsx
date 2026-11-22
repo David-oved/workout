@@ -292,6 +292,13 @@ function SettingsBody() {
                     if (!r.ok) { setTokErr(r.msg ?? 'שגיאה'); setBusy(false); return; }
                     saveToken(v);
                     await enableFeed();
+                    if (feedState.get().status === 'error') {
+                      const msg = feedState.get().msg ?? 'הפרסום נכשל';
+                      disconnectFeed();
+                      setTokErr(msg);
+                      setBusy(false);
+                      return;
+                    }
                     setTok('');
                     setBusy(false);
                     toast('הפיד פעיל');
