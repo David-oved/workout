@@ -4,6 +4,8 @@ import { store } from '../core/state';
 import { actions } from '../core/actions';
 import { ui, setUi, toast } from '../ui/ui';
 import { Sheet } from '../ui/components';
+import { bridge } from '../core/bridge';
+import { conflictsFor, hhmm, suggestSlot } from '../core/conflicts';
 import { DAY_NAMES, dow } from '../core/dates';
 import type { Entry, WorkoutStatus } from '../core/types';
 
@@ -80,6 +82,8 @@ export function WorkoutSheet() {
   if (ws) last.current = ws;
   const cur = last.current;
   const w = cur?.id ? s.workouts.find((x) => x.id === cur.id) : undefined;
+  const ext = bridge.use((x) => x.events);
+  const connected = bridge.use((x) => x.connected);
   const [f, setF] = useState({ title: '', date: '', time: '18:00', status: 'planned' as WorkoutStatus });
   useEffect(() => {
     if (!ws) return;
@@ -118,6 +122,16 @@ export function WorkoutSheet() {
         <div><label class="lbl">תאריך {f.date && `· ${DAY_NAMES[dow(f.date)]}`}</label><input class="inp" type="date" value={f.date} onInput={(e) => setF({ ...f, date: (e.target as HTMLInputElement).value })} /></div>
         <div><label class="lbl">שעה</label><input class="inp" type="time" value={f.time} onInput={(e) => setF({ ...f, time: (e.target as HTMLInputElement).value })} /></div>
       </div>
+      {connected && f.date && (() => {
+        const cf = conflictsFor({ date: f.date, time: f.time }, ext);
+        const slot = suggestSlot(f.date, ext, s.workouts, f.time, w?.id);
+        return (
+          <div class="mu" style={{ marginTop: 10, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+            <span style={{ color: cf.length ? 'var(--warn)' : undefined }}>{cf.length ? `מתנגש עם ״${cf[0].title}״ (${hhmm(cf[0].start)}–${hhmm(cf[0].end)})` : 'פנוי ביומן'}</span>
+            {slot && slot !== f.time && <button class="btn sm" onClick={() => setF({ ...f, time: slot })}>הצע: {slot}</button>}
+          </div>
+        );
+      })()}
       <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
         <button class="btn primary" style={{ flex: 1 }} onClick={save}>שמור</button>
         {w && <button class="btn danger" onClick={del}><Trash /> {w.routineId ? 'בטל' : 'מחק'}</button>}

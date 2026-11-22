@@ -1,5 +1,7 @@
 import { useState } from 'preact/hooks';
-import { Settings as Cog, ChevronLeft, ChevronRight, Dumbbell, Utensils, Check, CalendarPlus, Plus } from 'lucide-preact';
+import { Settings as Cog, ChevronLeft, ChevronRight, Dumbbell, Utensils, Check, CalendarPlus, CalendarDays, Plus } from 'lucide-preact';
+import { bridge } from '../core/bridge';
+import { conflictsFor, eventsOn, hhmm } from '../core/conflicts';
 import { store } from '../core/state';
 import { dayInfo, fmt } from '../core/calc';
 import { DAY_NAMES, DAY_SHORT, MONTHS, addDays, dayMonth, dow, parseKey, todayKey, weekStart } from '../core/dates';
@@ -17,15 +19,25 @@ export function CalendarScreen() {
   const info = dayInfo(s, selDate);
   const month = MONTHS[parseKey(days[3]).getMonth()];
 
-  type Ev = { time: string; kind: 'meal' | 'work'; title: string; sub: string; done?: boolean; skipped?: boolean; onClick: () => void };
+  const ext = bridge.use((x) => x.events);
+  type Ev = { time: string; kind: 'meal' | 'work' | 'ext'; title: string; sub: string; done?: boolean; skipped?: boolean; warn?: boolean; onClick: () => void };
   const events: Ev[] = [];
   for (const sl of s.settings.slots) {
     const eaten = info.entries.filter((e) => e.slot === sl.id).reduce((a, e) => a + e.k, 0);
     events.push({ time: sl.time, kind: 'meal', title: `ארוחת ${sl.name}`, sub: eaten ? `${fmt(eaten)} קל׳ נרשמו` : 'עדיין לא נרשם', done: eaten > 0, onClick: () => openAdd(sl.id, selDate) });
   }
   for (const w of info.workouts) {
-    events.push({ time: w.time, kind: 'work', title: w.title, sub: w.status === 'done' ? 'בוצע' : w.status === 'skipped' ? 'בוטל' : 'מתוכנן · תזכורת 30 דק׳ לפני', done: w.status === 'done', skipped: w.status === 'skipped', onClick: () => setUi({ workoutSheet: { id: w.id, date: w.date } }) });
+    const cf = w.status === 'skipped' ? [] : conflictsFor(w, ext);
+    events.push({
+      time: w.time, kind: 'work', title: w.title,
+      sub: cf.length ? `מתנגש עם ״${cf[0].title}״` : w.status === 'done' ? 'בוצע' : w.status === 'skipped' ? 'בוטל' : 'מתוכנן',
+      warn: cf.length > 0, done: w.status === 'done', skipped: w.status === 'skipped',
+      onClick: () => setUi({ workoutSheet: { id: w.id, date: w.date } }),
+    });
   }
+  const dayExt = eventsOn(ext, selDate);
+  for (const e of dayExt.allDay) events.push({ time: '00:00', kind: 'ext', title: e.title, sub: `כל היום · ${e.cal}`, onClick: () => {} });
+  for (const e of dayExt.timed) events.push({ time: hhmm(e.start) || '00:00', kind: 'ext', title: e.title, sub: `${hhmm(e.start)}–${hhmm(e.end)} · ${e.cal}`, onClick: () => {} });
   events.sort((a, b) => a.time.localeCompare(b.time));
 
   return (
@@ -61,9 +73,9 @@ export function CalendarScreen() {
         {events.map((e, i) => (
           <button class="ev" key={i} onClick={e.onClick} style={{ opacity: e.skipped ? 0.5 : 1 }}>
             <span class="tm num">{e.time}</span>
-            <span class="vb" style={{ background: e.kind === 'work' ? 'var(--accent)' : 'var(--cc)' }} />
-            <div style={{ textDecoration: e.skipped ? 'line-through' : undefined }}>{e.title}<small>{e.sub}</small></div>
-            {e.done ? <Check class="ok" /> : e.kind === 'work' ? <Dumbbell /> : <Utensils />}
+            <span class="vb" style={{ background: e.kind === 'work' ? 'var(--accent)' : e.kind === 'ext' ? '#B69CFF' : 'var(--cc)' }} />
+            <div style={{ textDecoration: e.skipped ? 'line-through' : undefined }}>{e.title}<small style={e.warn ? { color: 'var(--warn)' } : undefined}>{e.sub}</small></div>
+            {e.done ? <Check class="ok" /> : e.kind === 'work' ? <Dumbbell /> : e.kind === 'ext' ? <CalendarDays /> : <Utensils />}
           </button>
         ))}
       </div>

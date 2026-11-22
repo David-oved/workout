@@ -6,15 +6,16 @@ import { actions } from '../core/actions';
 import { fmt, suggestTargets } from '../core/calc';
 import { DAY_NAMES, uid } from '../core/dates';
 import { setUi, ui, toast } from '../ui/ui';
+import { bridge, scriptSource, pingBridge, connectBridge, disconnectBridge, refreshEvents, syncWorkouts } from '../core/bridge';
 import { feedState, feedUrl, webcalUrl, hasToken, verifyToken, saveToken, enableFeed, disconnectFeed, syncFeed } from '../core/calfeed';
 import { FullScreen, Sheet } from '../ui/components';
 import { exportBackup, importBackup } from '../core/backup';
 import { APP_VERSION, BUILD_ID, updater, checkForUpdate, applyUpdate } from '../update/updater';
 import type { Macros, Profile, TargetKey } from '../core/types';
 
-type Page = 'home' | 'profile' | 'targets' | 'week' | 'meals' | 'start' | 'backup' | 'updates' | 'calendar';
+type Page = 'home' | 'profile' | 'targets' | 'week' | 'meals' | 'start' | 'backup' | 'updates' | 'calendar' | 'gcal';
 const TITLES: Record<Page, string> = {
-  home: 'הגדרות', profile: 'פרופיל', targets: 'יעדי תזונה', week: 'שבוע ואימונים', meals: 'ארוחות', start: 'תחילת יום', backup: 'גיבוי', updates: 'עדכונים', calendar: 'יומן וסנכרון',
+  home: 'הגדרות', profile: 'פרופיל', targets: 'יעדי תזונה', week: 'שבוע ואימונים', meals: 'ארוחות', start: 'תחילת יום', backup: 'גיבוי', updates: 'עדכונים', calendar: 'פיד לקריאה בלבד', gcal: 'Google Calendar',
 };
 const TARGETS: [TargetKey, string][] = [
   ['dorm-rest', 'מעונות · מנוחה'], ['dorm-train', 'מעונות · אימון'], ['home-rest', 'בית · מנוחה'], ['home-train', 'בית · אימון'],
@@ -63,6 +64,9 @@ function SettingsBody() {
   const [tok, setTok] = useState('');
   const [busy, setBusy] = useState(false);
   const [tokErr, setTokErr] = useState('');
+  const br = bridge.use((x) => x);
+  const [gurl, setGurl] = useState('');
+  const [gerr, setGerr] = useState('');
   const s = store.use((x) => x);
   const u = updater.use((x) => x);
   const set = s.settings;
@@ -126,7 +130,8 @@ function SettingsBody() {
               <Row icon={<Sunrise />} title="תחילת יום" value={set.resetHour === 0 ? 'חצות' : `0${set.resetHour}:00 לפנות בוקר`} onClick={() => setPage('start')} />
             </div>
             <div class="g rows" style={{ marginTop: 14 }}>
-              <Row icon={<CalendarPlus />} title="יומן וסנכרון" value={set.cal.enabled ? `פיד פעיל · התראה ${set.cal.alertMin || 'ללא'}${set.cal.alertMin ? ' דק׳ לפני' : ''}` : 'לא מחובר'} onClick={() => setPage('calendar')} />
+              <Row icon={<CalendarDays />} title="Google Calendar" value={br.connected ? `מחובר · ${br.events.length} אירועים` : 'קריאת אירועים וכתיבת אימונים'} badge={!br.connected} onClick={() => setPage('gcal')} />
+              <Row icon={<CalendarPlus />} title="פיד לקריאה בלבד" value={set.cal.enabled ? `פיד פעיל · התראה ${set.cal.alertMin || 'ללא'}${set.cal.alertMin ? ' דק׳ לפני' : ''}` : 'לא מחובר'} onClick={() => setPage('calendar')} />
               <Row icon={<Download />} title="גיבוי" value={`גיבוי אחרון: ${lastTxt}`} onClick={() => setPage('backup')} />
               <Row icon={<RefreshCw />} title="עדכונים" value={updAvail ? 'יש גרסה חדשה' : `גרסה ${APP_VERSION}`} badge={updAvail} onClick={() => setPage('updates')} />
             </div>
@@ -261,6 +266,75 @@ function SettingsBody() {
             </div>
           </>
         )}
+
+        {page === 'gcal' && (() => {
+          const ago = (t?: number) => { if (!t) return 'עוד לא'; const m = Math.max(0, Math.round((Date.now() - t) / 60000)); return m === 0 ? 'הרגע' : `לפני ${m} דק׳`; };
+          if (!br.connected) {
+            return (
+              <>
+                <div class="g card">
+                  <div style={{ fontWeight: 600, marginBottom: 8 }}>חיבור פעם אחת (כ-5 דקות)</div>
+                  <ol class="mu" style={{ margin: 0, paddingRight: 20, lineHeight: 1.8 }}>
+                    <li>לוחצים "העתק קוד" כאן למטה.</li>
+                    <li>פותחים script.google.com ← New project, מוחקים את הקוד שיש ומדביקים.</li>
+                    <li>Deploy ← New deployment ← סוג Web app ← Execute as: Me ← Who has access: Anyone ← Deploy.</li>
+                    <li>מאשרים הרשאות (אם מופיעה אזהרה: Advanced ← Go to project).</li>
+                    <li>מעתיקים את ה-Web app URL (נגמר ב-/exec) ומדביקים בשדה.</li>
+                  </ol>
+                  <div style={{ display: 'flex', gap: 10, marginTop: 12 }}>
+                    <button class="btn primary" style={{ flex: 1 }} onClick={async () => { try { await navigator.clipboard.writeText(scriptSource()); toast('הקוד הועתק'); } catch { toast('לא הצלחתי להעתיק'); } }}><Copy /> העתק קוד</button>
+                    <a class="btn" style={{ flex: 1, textDecoration: 'none', color: 'inherit' }} href="https://script.google.com/home/projects/create" target="_blank" rel="noopener">פתח את Script</a>
+                  </div>
+                </div>
+                <div class="g card">
+                  <label class="lbl">כתובת ה-Web app</label>
+                  <input class="inp" style={{ direction: 'ltr', textAlign: 'left' }} value={gurl} placeholder="https://script.google.com/macros/s/…/exec" autocomplete="off" autocapitalize="none" spellcheck={false} onInput={(e) => { setGurl(nv(e)); setGerr(''); }} />
+                  <div class="err" style={{ gridColumn: 'auto', marginTop: 6 }}>{gerr}</div>
+                  <button class="btn primary block" disabled={busy} onClick={async () => {
+                    const v = gurl.trim();
+                    if (!/^https:\/\/script\.google\.com\/.+\/exec/.test(v)) { setGerr('הדבק את הכתובת המלאה שנגמרת ב-/exec'); return; }
+                    setBusy(true);
+                    const r = await pingBridge(v);
+                    setBusy(false);
+                    if (!r.ok) { setGerr(r.msg ?? 'שגיאה'); return; }
+                    connectBridge(v);
+                    setGurl('');
+                    toast(`מחובר. נמצאו ${r.calendars?.length ?? 0} יומנים`);
+                  }}>{busy ? 'מתחבר…' : 'חבר'}</button>
+                </div>
+                <div class="note">הקוד רץ בחשבון Google שלך בלבד. הכתובת והמפתח נשמרים רק בטלפון הזה, ומי שמחזיק בהם יכול לקרוא את היומן, אז אל תשתף אותם.</div>
+              </>
+            );
+          }
+          const cur = br.syncStatus === 'error' ? br.syncMsg : br.evStatus === 'error' ? br.evMsg : '';
+          return (
+            <>
+              <div class="g card">
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}><b>מחובר ליומן Google</b><span class="mu num">{br.events.length} אירועים בשלושה שבועות</span></div>
+                <div class="mu" style={{ marginTop: 8, lineHeight: 1.7 }}>
+                  קריאת אירועים: {br.evStatus === 'loading' ? 'מרענן…' : ago(br.evAt)}<br />
+                  כתיבת אימונים: {br.syncStatus === 'syncing' ? 'מעדכן…' : ago(br.syncAt)}
+                </div>
+                {cur && <div style={{ color: 'var(--warn)', marginTop: 8, fontSize: 14 }}>שגיאה: {cur}</div>}
+              </div>
+              <div style={{ display: 'flex', gap: 10 }}>
+                <button class="btn" style={{ flex: 1 }} onClick={() => void refreshEvents(true)}><RefreshCw class={br.evStatus === 'loading' ? 'spin' : ''} /> רענן אירועים</button>
+                <button class="btn" style={{ flex: 1 }} onClick={() => void syncWorkouts(true)}><RefreshCw class={br.syncStatus === 'syncing' ? 'spin' : ''} /> סנכרן אימונים</button>
+              </div>
+              <div class="sec"><span>התראה לפני אימון</span></div>
+              <div class="chips">
+                {([[0, 'ללא'], [15, '15 דק׳'], [30, '30 דק׳'], [60, 'שעה']] as const).map(([m, l]) => (
+                  <button class={'chip' + (set.cal.alertMin === m ? ' on' : '')} onClick={() => actions.saveSettings({ cal: { ...set.cal, alertMin: m } })}>{l}</button>
+                ))}
+              </div>
+              <div class="sec"><span>יומן אפל</span></div>
+              <div class="g card"><div class="mu" style={{ lineHeight: 1.7 }}>האימונים נכתבים ליומן בשם workOut בחשבון Google. כדי לראות אותם (ולקבל התראות) ביומן של אפל: הגדרות האייפון ← יומן ← חשבונות ← הוספת חשבון Google. אם היומן workOut לא מופיע, ודא שהוא מסומן ב-google.com/calendar/syncselect.</div></div>
+              <div class="sec"><span>אירועים מ-iCloud</span></div>
+              <div class="g card"><div class="mu" style={{ lineHeight: 1.7 }}>האפליקציה קוראת רק אירועים שנמצאים ב-Google. לאירועים חדשים: באייפון ← הגדרות ← יומן ← יומן ברירת מחדל ← יומן של Google. לאירועים קיימים של iCloud: שתף את היומן כ-Public Calendar והוסף את הקישור ב-Google Calendar ← Other calendars ← From URL (מתעדכן לאט, עד יום).</div></div>
+              <button class="btn danger block" style={{ marginTop: 14 }} onClick={() => { if (confirm('לנתק את החיבור ליומן? הכתובת והמפתח יימחקו מהטלפון. אירועי workOut שכבר נכתבו יישארו ביומן.')) { disconnectBridge(); toast('נותק'); } }}>נתק</button>
+            </>
+          );
+        })()}
 
         {page === 'calendar' && (() => {
           const id = set.cal.feedId;

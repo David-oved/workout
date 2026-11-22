@@ -1,4 +1,6 @@
-import { Settings as Cog, ChevronLeft, ChevronRight, Plus, Dumbbell, Check, Copy, Download } from 'lucide-preact';
+import { Settings as Cog, ChevronLeft, ChevronRight, Plus, Dumbbell, Check, Copy, Download, Siren } from 'lucide-preact';
+import { bridge } from '../core/bridge';
+import { conflictsFor, eventsOn, hhmm, suggestSlot } from '../core/conflicts';
 import { store } from '../core/state';
 import { actions } from '../core/actions';
 import { dayInfo, fmt } from '../core/calc';
@@ -39,6 +41,9 @@ export function TodayScreen() {
   const tab = ui.use((u) => u.tab);
   const today = todayKey(s.settings.resetHour);
   const info = dayInfo(s, date);
+  const ext = bridge.use((x) => x.events);
+  const connected = bridge.use((x) => x.connected);
+  const dayEv = eventsOn(ext, date);
   const { target, eaten } = info;
   const left = target.k - eaten.k;
   const slots = s.settings.slots;
@@ -122,6 +127,36 @@ export function TodayScreen() {
       </div>
 
       {info.workouts.map((w) => <WorkoutCard w={w} key={w.id} />)}
+      {connected && info.workouts.filter((w) => w.status === 'planned').map((w) => {
+        const cf = conflictsFor(w, ext);
+        if (!cf.length) return null;
+        const slot = suggestSlot(date, ext, s.workouts, w.time, w.id);
+        return (
+          <div class="g wcard warn" key={'c' + w.id}>
+            <div class="ic"><Siren size={22} /></div>
+            <div class="tx">
+              <b>התנגשות ביומן</b>
+              <span class="mu">{w.title} ב-{w.time} מול ״{cf[0].title}״ ({hhmm(cf[0].start)}–{hhmm(cf[0].end)}){cf.length > 1 ? ` ועוד ${cf.length - 1}` : ''}</span>
+            </div>
+            {slot && (
+              <button class="btn primary sm" onClick={() => { const old = w.time; actions.updateWorkout(w.id, { time: slot }); toast(`האימון הועבר ל-${slot}`, () => actions.updateWorkout(w.id, { time: old })); }}>הזז ל-{slot}</button>
+            )}
+          </div>
+        );
+      })}
+      {connected && (dayEv.timed.length > 0 || dayEv.allDay.length > 0) && (
+        <>
+          <div class="sec"><span>ביומן שלך</span></div>
+          <div class="g rows">
+            {dayEv.allDay.map((e) => (
+              <div class="row2" key={e.id}><span>{e.title}<small>{e.cal}</small></span><span class="mu">כל היום</span></div>
+            ))}
+            {dayEv.timed.map((e) => (
+              <div class="row2" key={e.id}><span>{e.title}<small>{e.cal}</small></span><span class="mu num">{hhmm(e.start)}–{hhmm(e.end)}</span></div>
+            ))}
+          </div>
+        </>
+      )}
       {info.workouts.length === 0 && (
         <button class="btn block" style={{ marginTop: 12 }} onClick={() => setUi({ workoutSheet: { date } })}><Dumbbell /> הוסף אימון ליום הזה</button>
       )}
