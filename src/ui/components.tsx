@@ -52,6 +52,20 @@ export function FullScreen({ open, children }: { open: boolean; children: Compon
   return <div class={'fs' + (open ? ' on' : '')}>{show && children}</div>;
 }
 
+/** גיליון גדול למסך ההוספה: רקע מעומעם, והיום נשאר מתחתיו */
+export function BigSheet({ open, onClose, children }: { open: boolean; onClose: () => void; children: ComponentChildren }) {
+  const show = useLinger(open);
+  return (
+    <>
+      <div class={'bsb' + (open ? ' on' : '')} onClick={onClose} />
+      <div class={'bsh' + (open ? ' on' : '')} role="dialog" aria-modal="true">
+        <div class="grab" />
+        {show && children}
+      </div>
+    </>
+  );
+}
+
 const TABS: { id: Tab; label: string; Icon: typeof House }[] = [
   { id: 'progress', label: 'התקדמות', Icon: ChartColumn },
   { id: 'today', label: 'היום', Icon: House },

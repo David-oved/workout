@@ -47,10 +47,10 @@ export function AiSetup({ onDone }: { onDone?: () => void }) {
 }
 
 /** מרנדר Markdown קל (הדגשה ורשימות) בלי innerHTML */
-function inline(s: string) {
+export function inline(s: string) {
   return s.split(/(\*\*[^*]+\*\*)/g).map((p, i) => (p.startsWith('**') && p.endsWith('**') && p.length > 4 ? <b key={i}>{p.slice(2, -2)}</b> : p));
 }
-function Md({ text }: { text: string }) {
+export function Md({ text }: { text: string }) {
   const blocks: any[] = [];
   let list: string[] = [];
   const flush = () => {

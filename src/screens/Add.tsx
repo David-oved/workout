@@ -1,192 +1,337 @@
-import { useEffect, useMemo, useState } from 'preact/hooks';
-import { X, Search, Plus, Star, Undo2, Minus, Sparkles } from 'lucide-preact';
+import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
+import { X, Plus, Minus, Sparkles, Camera, Paperclip, ArrowUp, ChevronDown, Star, Trash, Globe, Brain, ChevronRight } from 'lucide-preact';
 import { store } from '../core/state';
 import { actions } from '../core/actions';
-import { fmt, recentFoods, scale } from '../core/calc';
-import { dayLabel, todayKey } from '../core/dates';
-import { ui, setUi } from '../ui/ui';
-import { FullScreen, Sheet } from '../ui/components';
-import { BUILTIN_FOODS, SIZES } from '../data/foods';
-import type { Food } from '../core/types';
+import { dayInfo, fmt } from '../core/calc';
+import { addDays, dayLabel, todayKey } from '../core/dates';
+import { ui, setUi, toast } from '../ui/ui';
+import { BigSheet, Sheet } from '../ui/components';
+import { aiState } from '../ai/gemini';
+import { fileToAttachment } from '../ai/image';
+import { chat, draftOf, markAdded, removeItem, resetChat, sendMessage, setDeep, setGrams, setWeb, undoAdd, type Attachment } from '../ai/chat';
+import { AiSetup } from './AiChat';
+import { Messages } from './AiParts';
+import { buildCandidates, candMacros, gapSuggestions, macrosOf, parseEntry, searchCandidates, topTiles, tray, trayAdd, trayClear, trayRemove, traySet, type Cand, type TItem } from '../ui/tray';
 
-type Tab = 'recent' | 'fav' | 'foods' | 'manual';
-const TABS: [Tab, string][] = [['recent', 'האחרונים'], ['fav', 'מועדפים'], ['foods', 'הערכה מהירה'], ['manual', 'ידני']];
-
-const macroLine = (x: { k: number; p: number; c: number; f: number }) => (
-  <span class="num">{x.k} קל׳<u class="m1">{x.p} ח׳</u><u class="m2">{x.c} פ׳</u><u class="m3">{x.f} ש׳</u></span>
-);
+const Kcal = ({ m }: { m: { k: number } }) => <span class="num">{m.k}</span>;
 
 export function AddScreen() {
   const open = ui.use((u) => u.addOpen);
   const slot = ui.use((u) => u.addSlot);
   const date = ui.use((u) => u.addDate);
+  const addView = ui.use((u) => u.addView);
   const s = store.use((x) => x);
-  const [tab, setTab] = useState<Tab>('recent');
+  const ch = chat.use((x) => x);
+  const configured = aiState.use((x) => x.configured);
+  const manual = tray.use((x) => x.items);
+
   const [q, setQ] = useState('');
-  const [detail, setDetail] = useState<Food | null>(null);
-  const [size, setSize] = useState<(typeof SIZES)[number]['id']>('m');
-  const [qty, setQty] = useState(1);
-  const [added, setAdded] = useState<{ ids: string[]; k: number; counts: Record<string, number> }>({ ids: [], k: 0, counts: {} });
+  const [view, setView] = useState<'tiles' | 'chat'>('tiles');
+  const [more, setMore] = useState(false);
+  const [slotOpen, setSlotOpen] = useState(false);
+  const [sheet, setSheet] = useState<null | 'manual' | 'favs'>(null);
+  const [files, setFiles] = useState<Attachment[]>([]);
+  const [fileBusy, setFileBusy] = useState(false);
+  const [openRow, setOpenRow] = useState<string | null>(null);
   const [man, setMan] = useState({ name: '', k: '', p: '', c: '', f: '', fav: false });
   const [err, setErr] = useState('');
+  const bodyRef = useRef<HTMLDivElement>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const inRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    if (open) { setTab('recent'); setQ(''); setDetail(null); setAdded({ ids: [], k: 0, counts: {} }); setErr(''); setMan({ name: '', k: '', p: '', c: '', f: '', fav: false }); }
+    if (!open) return;
+    trayClear();
+    setQ(''); setFiles([]); setOpenRow(null); setSlotOpen(false); setMore(false); setSheet(null); setErr('');
+    setView(addView === 'chat' || draftOf(chat.get().messages) ? 'chat' : 'tiles');
   }, [open]);
 
-  const recents: Food[] = useMemo(
-    () => recentFoods(s.entries).map((e) => ({ id: 'r-' + e.name, name: e.name, k: e.k, p: e.p, c: e.c, f: e.f, est: e.est })),
-    [s.entries],
-  );
-  const favNames = new Set(s.favorites.map((x) => x.name));
-  const list = useMemo(() => {
-    const term = q.trim();
-    if (term) {
-      const pool = [...s.favorites, ...recents, ...BUILTIN_FOODS];
-      const seen = new Set<string>();
-      return pool.filter((f) => f.name.includes(term) && !seen.has(f.name) && seen.add(f.name));
-    }
-    return tab === 'recent' ? recents : tab === 'fav' ? s.favorites : tab === 'foods' ? BUILTIN_FOODS : [];
-  }, [q, tab, s.favorites, recents]);
-
-  const slotName = s.settings.slots.find((x) => x.id === slot)?.name ?? 'ארוחה';
   const today = todayKey(s.settings.resetHour);
+  const slotName = s.settings.slots.find((x) => x.id === slot)?.name ?? 'ארוחה';
+  const cands = useMemo(() => buildCandidates(slot), [s.entries, s.favorites, slot, open]);
 
-  const addFood = (f: Food, qy = 1, sz: string = 'm') => {
-    const x = (SIZES.find((z) => z.id === sz)?.x ?? 1) * qy;
-    const m = scale(f, x);
-    const label = (sz !== 'm' ? ` (${SIZES.find((z) => z.id === sz)?.label})` : '') + (qy !== 1 ? ` ×${qy}` : '');
-    const e = actions.addEntry({ date, slot, name: f.name + label, ...m, est: f.est });
-    setAdded((a) => ({ ids: [...a.ids, e.id], k: a.k + m.k, counts: { ...a.counts, [f.name]: (a.counts[f.name] ?? 0) + 1 } }));
+  // המגש: פריטים ידניים + הארוחה שה-AI בנה
+  const draft = draftOf(ch.messages);
+  const aiItems: TItem[] = (draft?.items ?? []).map((it) => ({
+    id: it.id, name: it.name, unit: 'g', amount: it.grams, step: 10, base: 100,
+    per: { k: it.kcal100, p: it.p100, c: it.c100, f: it.f100 }, est: it.source !== 'label', src: 'ai', msgId: draft!.id, conf: it.confidence,
+  }));
+  const all = [...manual, ...aiItems];
+  const tot = all.reduce((a, it) => { const m = macrosOf(it); return { k: a.k + m.k, p: a.p + m.p, c: a.c + m.c, f: a.f + m.f }; }, { k: 0, p: 0, c: 0, f: 0 });
+
+  const info = dayInfo(s, date);
+  const remK = info.target.k - info.eaten.k - tot.k;
+  const remP = Math.max(0, info.target.p - info.eaten.p - tot.p);
+  const gap = gapSuggestions(cands, date, tot);
+  const tiles = topTiles(cands, more ? 12 : 6);
+  const results = view === 'tiles' ? searchCandidates(cands, q) : [];
+
+  const addCand = (c: Cand) => trayAdd(c);
+  const close = () => setUi({ addOpen: false });
+
+  const submit = (override?: string) => {
+    const t = (override ?? q).trim();
+    if (!t && !files.length) return;
+    setView('chat');
+    if (!configured) return;
+    const fs = files;
+    setQ(''); setFiles([]);
+    void sendMessage(t, fs);
+    setTimeout(() => { const b = bodyRef.current; if (b) b.scrollTo({ top: b.scrollHeight, behavior: 'smooth' }); }, 80);
   };
-  const undo = () => {
-    const id = added.ids[added.ids.length - 1];
-    if (!id) return;
-    const e = store.get().entries.find((x) => x.id === id);
-    actions.deleteEntry(id);
-    setAdded((a) => ({ ...a, ids: a.ids.slice(0, -1), k: a.k - (e?.k ?? 0) }));
+  const onFiles = async (e: Event) => {
+    const input = e.target as HTMLInputElement;
+    const picked = [...(input.files ?? [])].slice(0, 3 - files.length);
+    input.value = '';
+    if (!picked.length) return;
+    setFileBusy(true);
+    try {
+      const out = await Promise.all(picked.map((f) => fileToAttachment(f)));
+      setFiles((p) => [...p, ...out].slice(0, 3));
+      setView('chat');
+    } catch (er) { toast((er as Error).message); }
+    setFileBusy(false);
   };
+
+  useEffect(() => {
+    if (view === 'chat') setTimeout(() => { const b = bodyRef.current; if (b) b.scrollTo({ top: b.scrollHeight }); }, 80);
+  }, [ch.messages.length, view]);
+  useEffect(() => {
+    if (ch.busy && view === 'chat') { const b = bodyRef.current; if (b) b.scrollTo({ top: b.scrollHeight }); }
+  }, [ch.messages[ch.messages.length - 1]?.text, ch.stage?.n]);
+
+  const setAmt = (it: TItem, v: number) => (it.src === 'ai' ? setGrams(it.msgId!, it.id, v) : traySet(it.id, v));
+  const rm = (it: TItem) => (it.src === 'ai' ? removeItem(it.msgId!, it.id) : trayRemove(it.id));
+
+  const commit = () => {
+    if (!all.length) return;
+    const ids: string[] = [];
+    for (const it of all) {
+      const m = macrosOf(it);
+      const nm = it.unit === 'g' ? `${it.name} · ${Math.round(it.amount)} ג׳` : it.amount !== 1 ? `${it.name} ×${it.amount}` : it.name;
+      ids.push(actions.addEntry({ date, slot, name: nm, ...m, est: it.est }).id);
+    }
+    if (draft) markAdded(draft.id, ids, slotName);
+    trayClear();
+    close();
+    toast(`נוסף ל${slotName}`, () => (draft ? undoAdd(draft.id) : actions.removeEntries(ids)));
+  };
+
+  const ydayEntries = s.entries.filter((e) => e.date === addDays(date, -1) && e.slot === slot);
+  const copyYesterday = () => {
+    for (const e of ydayEntries) {
+      const p = parseEntry(e);
+      trayAdd({ key: p.name, name: p.name, unit: p.unit, base: p.base, per: p.per, amount: p.amount, est: e.est, w: 0 });
+    }
+    toast(`${ydayEntries.length} מנות מאתמול במגש`);
+  };
+
   const submitManual = () => {
     const k = Number(man.k);
-    if (!k) { setErr('הזן קלוריות כדי להוסיף'); return; }
-    const food: Food = { id: 'm-' + Date.now(), name: man.name.trim() || 'הזנה ידנית', k, p: +man.p || 0, c: +man.c || 0, f: +man.f || 0 };
-    addFood(food);
-    if (man.fav && man.name.trim() && !favNames.has(food.name)) actions.toggleFavorite(food);
+    if (!k) { setErr('הזן קלוריות'); return; }
+    const name = man.name.trim() || 'הזנה ידנית';
+    const per = { k, p: Number(man.p) || 0, c: Number(man.c) || 0, f: Number(man.f) || 0 };
+    trayAdd({ key: name, name, unit: 'p', base: 1, per, amount: 1, w: 0 });
+    if (man.fav && man.name.trim()) actions.toggleFavorite({ name, k, p: per.p, c: per.c, f: per.f });
     setMan({ name: '', k: '', p: '', c: '', f: '', fav: false });
     setErr('');
+    setSheet(null);
   };
 
-  const eatenNow = s.entries.filter((e) => e.date === date).reduce((a, e) => a + e.k, 0);
-  const tk = (() => {
-    const place = s.settings.places[new Date(date + 'T00:00').getDay()];
-    return s.settings.targets[`${place}-${s.workouts.some((w) => w.date === date && w.status !== 'skipped') ? 'train' : 'rest'}`].k;
-  })();
-  const remain = Math.max(0, tk - eatenNow);
-  const n = added.ids.length;
+  const inTrayX = (c: Cand) => {
+    const it = manual.find((i) => i.name === c.name);
+    return it ? Math.round((it.amount / c.amount) * 10) / 10 : 0;
+  };
 
-  const detailMacros = detail ? scale(detail, (SIZES.find((z) => z.id === size)?.x ?? 1) * qty) : null;
+  const showTray = all.length > 0;
 
   return (
-    <FullScreen open={open}>
-      <div class="hd">
+    <BigSheet open={open} onClose={close}>
+      <div class="as-top">
         <div>
-          <div class="t">הוספה</div>
-          <div class="s">ל{slotName} · {dayLabel(date, today)}</div>
+          <div class="as-ti">מה אכלת?</div>
+          <div class="as-su num">{dayLabel(date, today)} · נשארו {fmt(Math.max(0, remK))} קל׳ · {remP} גרם חלבון</div>
         </div>
-        <button class="g ib" onClick={() => setUi({ addOpen: false })} aria-label="סגור"><X /></button>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <button class={'as-pill' + (slotOpen ? ' open' : '')} onClick={() => setSlotOpen((v) => !v)}>{slotName}<ChevronDown /></button>
+          <button class="as-x" aria-label="סגור" onClick={close}><X /></button>
+        </div>
       </div>
-
-      <button class="g aibtn" onClick={() => setUi({ aiOpen: true })}><Sparkles /><span>שוחח עם ה-AI<small>תיאור, תמונה או תווית תזונה</small></span></button>
-      <div class="chips">
-        {s.settings.slots.map((sl) => (
-          <button class={'chip' + (sl.id === slot ? ' on' : '')} onClick={() => setUi({ addSlot: sl.id })}>{sl.name}</button>
-        ))}
-      </div>
-
-      <div class="g sr flat"><Search /><input value={q} onInput={(e) => setQ((e.target as HTMLInputElement).value)} placeholder="חפש מזון או הקלד חופשי" autocomplete="off" enterkeyhint="search" /></div>
-
-      {!q && (
-        <div class="g seg flat">
-          {TABS.map(([id, label]) => <button class={tab === id ? 'on' : ''} onClick={() => setTab(id)}>{label}</button>)}
+      {slotOpen && (
+        <div class="chips as-slots">
+          {s.settings.slots.map((sl) => <button class={'chip' + (sl.id === slot ? ' on' : '')} onClick={() => { setUi({ addSlot: sl.id }); setSlotOpen(false); }}>{sl.name}</button>)}
         </div>
       )}
 
-      <div class="fs-body">
-        {!q && tab === 'manual' ? (
-          <div class="g rows" style={{ padding: 16 }}>
-            <div class="field">
-              <div class="full"><label class="lbl">שם (אופציונלי)</label><input class="inp" value={man.name} onInput={(e) => setMan({ ...man, name: (e.target as HTMLInputElement).value })} placeholder="למשל חטיף" /></div>
-              <div><label class="lbl">קלוריות</label><input class="inp num" inputMode="numeric" value={man.k} onInput={(e) => setMan({ ...man, k: (e.target as HTMLInputElement).value })} /></div>
-              <div><label class="lbl">חלבון (ג׳)</label><input class="inp num" inputMode="numeric" value={man.p} onInput={(e) => setMan({ ...man, p: (e.target as HTMLInputElement).value })} /></div>
-              <div><label class="lbl">פחמימה (ג׳)</label><input class="inp num" inputMode="numeric" value={man.c} onInput={(e) => setMan({ ...man, c: (e.target as HTMLInputElement).value })} /></div>
-              <div><label class="lbl">שומן (ג׳)</label><input class="inp num" inputMode="numeric" value={man.f} onInput={(e) => setMan({ ...man, f: (e.target as HTMLInputElement).value })} /></div>
-              <div class="err">{err}</div>
-              <button class="full" style={{ display: 'flex', alignItems: 'center', gap: 10, color: 'var(--mu)', fontSize: 14 }} onClick={() => setMan({ ...man, fav: !man.fav })}>
-                <span class={'tgl' + (man.fav ? ' on' : '')} style={{ width: 44, height: 26 }} />
-                שמור למועדפים
-              </button>
-              <button class="btn primary block full" onClick={submitManual}>הוסף</button>
+      <div class="g as-in">
+        <Sparkles />
+        <input ref={inRef} value={q} placeholder={view === 'chat' ? (ch.messages.length ? 'תקן אותי או שאל משהו…' : 'ספר לי מה אכלת…') : 'תאר, צלם או חפש…'} autocomplete="off" enterkeyhint="send"
+          onInput={(e) => setQ((e.target as HTMLInputElement).value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); submit(); } }} />
+        <button class="ic" aria-label="צרף תמונה או PDF" disabled={files.length >= 3} onClick={() => fileRef.current?.click()}>{view === 'chat' ? <Paperclip /> : <Camera />}</button>
+        {(q.trim() || files.length > 0) && <button class="ic go" aria-label="שלח ל-AI" onClick={() => submit()}><ArrowUp /></button>}
+      </div>
+      {(files.length > 0 || fileBusy) && (
+        <div class="cmpi" style={{ paddingBottom: 10 }}>
+          {files.map((f, idx) => (
+            <span class={'thumb' + (f.url ? '' : ' pdf')} key={idx}>
+              {f.url ? <img src={f.url} /> : <span class="pdfn">{f.name}</span>}
+              <button aria-label="הסר קובץ" onClick={() => setFiles((p) => p.filter((_, j) => j !== idx))}><X /></button>
+            </span>
+          ))}
+          {fileBusy && <span class="thumb ld" />}
+        </div>
+      )}
+      <input ref={fileRef} type="file" accept="image/*,application/pdf" multiple style={{ display: 'none' }} onChange={onFiles} />
+
+      <div class="as-body" ref={bodyRef} style={{ paddingBottom: showTray ? 330 : 100 }}>
+        {view === 'chat' ? (
+          <>
+            <div class="as-opts" style={{ justifyContent: 'space-between' }}>
+              <button class="as-back" onClick={() => setView('tiles')}><ChevronRight size={16} />חזרה לאריחים</button>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button class={'tg' + (ch.web ? ' on' : '')} onClick={() => setWeb(!ch.web)}><Globe />אינטרנט</button>
+                <button class={'tg' + (ch.deep ? ' on' : '')} onClick={() => setDeep(!ch.deep)}><Brain />עמוק</button>
+                {ch.messages.length > 0 && <button class="tg" aria-label="שיחה חדשה" onClick={() => { if (confirm('להתחיל שיחה חדשה?')) resetChat(); }}><Trash /></button>}
+              </div>
             </div>
-          </div>
-        ) : list.length === 0 ? (
-          <div class="g rows emp">
-            {q ? <>אין תוצאות ל״{q}״<br /><button class="btn primary sm" style={{ marginTop: 12 }} onClick={() => { setMan({ ...man, name: q }); setQ(''); setTab('manual'); }}>הוסף ידנית</button></>
-              : tab === 'fav' ? 'עוד אין מועדפים. לחץ על הכוכב ליד מנה כדי לשמור אותה.' : 'עוד לא הוספת מנות. הן יופיעו כאן אחרי הפעם הראשונה.'}
+            {!configured && <AiSetup />}
+            {configured && ch.messages.length === 0 && (
+              <div class="aiempty" style={{ paddingTop: 8 }}>
+                <div class="aiorb"><Sparkles /></div>
+                <div style={{ fontSize: 18, fontWeight: 600, margin: '10px 0 4px' }}>ספר לי מה אכלת</div>
+                <div class="mu" style={{ lineHeight: 1.6 }}>בחופשיות, כמו לחבר. אפשר גם לצלם צלחת או תווית, ולשאול כל דבר על תזונה ומאסה.</div>
+                <div class="sugg">
+                  {['חצי פיתה עם שניצל ושתי כפות חומוס', 'כמה חלבון נשאר לי ומה כדאי לאכול עכשיו?', 'למה אני לא עולה מספיק במשקל?'].map((t) => (
+                    <button class="chip" style={{ flex: 'none', whiteSpace: 'normal', height: 'auto', padding: '9px 14px', textAlign: 'right', borderRadius: 16 }} onClick={() => submit(t)}>{t}</button>
+                  ))}
+                </div>
+              </div>
+            )}
+            <Messages onSuggest={(t) => submit(t)} />
+          </>
+        ) : q.trim() ? (
+          <div class="as-res">
+            <button class="as-row ai" onClick={() => submit()}>
+              <Sparkles />
+              <div><b>שאל את ה-AI: ״{q.trim()}״</b><small>הוא יבין כמויות וירכיב לך ארוחה</small></div>
+              <ChevronRight size={18} style={{ transform: 'scaleX(-1)' }} />
+            </button>
+            {results.map((c) => {
+              const m = candMacros(c);
+              return (
+                <button class="as-row" key={c.key} onClick={() => { addCand(c); setQ(''); }}>
+                  <div><b>{c.name}</b><small class="num">{c.unit === 'g' ? `${c.amount} ג׳` : 'מנה'} · {m.k} קל׳ · {m.p} ח׳</small></div>
+                  <Plus />
+                </button>
+              );
+            })}
           </div>
         ) : (
-          <div class="g rows">
-            {tab === 'foods' && !q && <div class="mu" style={{ padding: '10px 16px 0' }}>ערכים משוערים למנה בינונית. לחץ על מנה לשינוי גודל וכמות.</div>}
-            {list.map((f) => {
-              const c = added.counts[f.name] ?? 0;
+          <>
+            {gap.list.length > 0 && (
+              <>
+                <div class="as-lbl"><span>חסר לך היום, לחיצה אחת סוגרת</span></div>
+                <div class="as-gap">
+                  {gap.list.map((c) => <button class="as-gc" key={c.key} onClick={() => addCand(c)}><Plus />{c.name} · +{candMacros(c).p} ח׳</button>)}
+                </div>
+              </>
+            )}
+            <div class="as-lbl"><span>הרגילים שלך</span><span>לפי {slotName}</span></div>
+            <div class="as-grid">
+              {tiles.map((c) => {
+                const n = inTrayX(c);
+                const m = candMacros(c);
+                return (
+                  <button class={'as-tile' + (n ? ' on' : '')} key={c.key} onClick={() => addCand(c)}>
+                    <span class="bd num">×{n}</span>
+                    <b>{c.name}</b>
+                    <small class="num">{c.unit === 'g' ? `${c.amount} ג׳ · ` : ''}{m.k} קל׳</small>
+                  </button>
+                );
+              })}
+            </div>
+            <div class="as-more">
+              <button onClick={() => setMore((v) => !v)}>{more ? 'פחות' : 'עוד'}</button>
+              <button onClick={() => setSheet('favs')}>מועדפים</button>
+              <button disabled={!ydayEntries.length} onClick={copyYesterday}>אתמול</button>
+              <button onClick={() => setSheet('manual')}>ידני</button>
+            </div>
+          </>
+        )}
+      </div>
+
+      {showTray && (
+        <div class="g as-tray">
+          <div class="as-tr">
+            {all.map((it) => {
+              const m = macrosOf(it);
+              const isG = it.unit === 'g';
               return (
-                <div class="it" key={f.id}>
-                  <button style={{ flex: 1, textAlign: 'right', minWidth: 0 }} onClick={() => { setDetail(f); setSize('m'); setQty(1); }}>
-                    <b>{f.name}{f.est && <span class="est">~</span>}</b>
-                    <span>{macroLine(f)}{f.unit && <u class="mu"> · {f.unit}</u>}</span>
+                <div class="as-it" key={it.id}>
+                  <div class="as-ih">
+                    <button class="nm" onClick={() => setOpenRow(openRow === it.id ? null : it.id)}>{it.name}{it.src === 'ai' && it.est ? <i class="etag" style={{ marginRight: 6 }}>הערכה</i> : null}</button>
+                    <span class="as-st">
+                      <button aria-label="הפחת" onClick={() => setAmt(it, it.amount - it.step)}><Minus /></button>
+                      <span class="num">{isG ? `${Math.round(it.amount)} ג׳` : `×${it.amount}`}</span>
+                      <button aria-label="הוסף" onClick={() => setAmt(it, it.amount + it.step)}><Plus /></button>
+                    </span>
+                    <span class="as-ik num"><Kcal m={m} /></span>
+                    <button class="as-rm" aria-label="הסר" onClick={() => rm(it)}><X /></button>
+                  </div>
+                  {openRow === it.id && (
+                    <div class="as-sl">
+                      <input type="range" style={{ accentColor: '#5CE1A8' }} min={isG ? 5 : 0.5} max={isG ? Math.max(600, Math.round(it.amount * 1.5)) : Math.max(6, it.amount * 2)} step={isG ? 5 : 0.5} value={it.amount}
+                        onInput={(e) => setAmt(it, Number((e.target as HTMLInputElement).value))} />
+                      <button class="as-rm" aria-label="מועדף" onClick={() => { actions.toggleFavorite({ name: isG ? `${it.name} · ${Math.round(it.amount)} ג׳` : it.name, k: m.k, p: m.p, c: m.c, f: m.f, est: it.est }); toast('נשמר במועדפים'); }}><Star /></button>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+          <div class="as-tot">
+            <b class="num">{fmt(tot.k)} קל׳</b>
+            <span class="num"><span class="m1">{tot.p} ח׳</span> · <span class="m2">{tot.c} פ׳</span> · <span class="m3">{tot.f} ש׳</span></span>
+          </div>
+          <button class="as-cta" onClick={commit}>הוסף ל{slotName}</button>
+        </div>
+      )}
+
+      <Sheet open={sheet === 'favs'} onClose={() => setSheet(null)}>
+        <h3>מועדפים</h3>
+        {s.favorites.length === 0 ? <div class="mu" style={{ padding: '14px 0' }}>עוד אין מועדפים. בעריכת פריט במגש לוחצים על הכוכב כדי לשמור.</div> : (
+          <div class="as-res" style={{ marginTop: 10 }}>
+            {s.favorites.map((f) => {
+              const p = parseEntry({ name: f.name, k: f.k, p: f.p, c: f.c, f: f.f });
+              return (
+                <div class="as-row" key={f.id}>
+                  <button style={{ flex: 1, textAlign: 'right' }} onClick={() => { trayAdd({ key: p.name, name: p.name, unit: p.unit, base: p.base, per: p.per, amount: p.amount, est: f.est, w: 0 }); setSheet(null); }}>
+                    <b>{f.name}</b><small class="num" style={{ display: 'block' }}>{f.k} קל׳ · {f.p} ח׳</small>
                   </button>
-                  <button class={'star' + (favNames.has(f.name) ? ' on' : '')} aria-label="מועדף" onClick={() => actions.toggleFavorite(f)}>
-                    <Star fill={favNames.has(f.name) ? 'currentColor' : 'none'} />
-                  </button>
-                  <button class={'pl' + (c ? ' dn' : '')} aria-label={`הוסף ${f.name}`} onClick={() => addFood(f)}>{c ? `×${c}` : <Plus />}</button>
+                  <button class="star on" aria-label="הסר" onClick={() => actions.toggleFavorite(f)}><Star fill="currentColor" /></button>
                 </div>
               );
             })}
           </div>
         )}
-      </div>
-
-      <div class="g sbar">
-        <div class="tx">
-          <b>{n ? `נוספו ${n} ${n === 1 ? 'מנה' : 'מנות'} · +${fmt(added.k)} קל׳` : 'עדיין לא נוספה מנה'}</b>
-          <span>נשארו {fmt(remain)} קל׳ להיום</span>
-        </div>
-        <button class={'un' + (n ? '' : ' off')} onClick={undo} aria-label="בטל אחרונה"><Undo2 /></button>
-        <button class="fin" onClick={() => setUi({ addOpen: false })}>סיום</button>
-      </div>
-
-      <Sheet open={!!detail} onClose={() => setDetail(null)}>
-        {detail && detailMacros && (
-          <div>
-            <h3>{detail.name}</h3>
-            <div class="mu" style={{ marginBottom: 14 }}>{detail.unit ? `מנה: ${detail.unit}` : 'מנה אחת'}{detail.est ? ' · הערכה' : ''}</div>
-            {detail.est && (
-              <div class="chips">
-                {SIZES.map((z) => <button class={'chip' + (z.id === size ? ' on' : '')} onClick={() => setSize(z.id)}>{z.label}</button>)}
-              </div>
-            )}
-            <div class="g stepper flat" style={{ marginBottom: 14 }}>
-              <button onClick={() => setQty((v) => Math.min(20, v + 0.5))} aria-label="הוסף"><Plus size={20} /></button>
-              <b class="num">×{qty}</b>
-              <button onClick={() => setQty((v) => Math.max(0.5, v - 0.5))} aria-label="הפחת"><Minus size={20} /></button>
-            </div>
-            <div class="num" style={{ textAlign: 'center', marginBottom: 16, fontSize: 15 }}>
-              <b style={{ fontSize: 26, display: 'block' }}>{detailMacros.k} קל׳</b>
-              <span class="m1">{detailMacros.p} ח׳</span> · <span class="m2">{detailMacros.c} פ׳</span> · <span class="m3">{detailMacros.f} ש׳</span>
-            </div>
-            <button class="btn primary block" onClick={() => { addFood(detail, qty, size); setDetail(null); }}>הוסף ל{slotName}</button>
-          </div>
-        )}
       </Sheet>
-    </FullScreen>
+
+      <Sheet open={sheet === 'manual'} onClose={() => setSheet(null)}>
+        <h3>הזנה ידנית</h3>
+        <div class="field" style={{ marginTop: 12 }}>
+          <div class="full"><label class="lbl">שם (אופציונלי)</label><input class="inp" value={man.name} placeholder="למשל חטיף" onInput={(e) => setMan({ ...man, name: (e.target as HTMLInputElement).value })} /></div>
+          <div><label class="lbl">קלוריות</label><input class="inp num" inputMode="numeric" value={man.k} onInput={(e) => setMan({ ...man, k: (e.target as HTMLInputElement).value })} /></div>
+          <div><label class="lbl">חלבון (ג׳)</label><input class="inp num" inputMode="numeric" value={man.p} onInput={(e) => setMan({ ...man, p: (e.target as HTMLInputElement).value })} /></div>
+          <div><label class="lbl">פחמימה (ג׳)</label><input class="inp num" inputMode="numeric" value={man.c} onInput={(e) => setMan({ ...man, c: (e.target as HTMLInputElement).value })} /></div>
+          <div><label class="lbl">שומן (ג׳)</label><input class="inp num" inputMode="numeric" value={man.f} onInput={(e) => setMan({ ...man, f: (e.target as HTMLInputElement).value })} /></div>
+          <div class="err">{err}</div>
+          <button class="full" style={{ display: 'flex', alignItems: 'center', gap: 10, color: 'var(--mu)', fontSize: 14 }} onClick={() => setMan({ ...man, fav: !man.fav })}>
+            <span class={'tgl' + (man.fav ? ' on' : '')} style={{ width: 44, height: 26 }} />שמור למועדפים
+          </button>
+          <button class="btn primary block full" onClick={submitManual}>הוסף למגש</button>
+        </div>
+      </Sheet>
+    </BigSheet>
   );
 }

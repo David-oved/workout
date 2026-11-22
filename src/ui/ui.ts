@@ -14,6 +14,7 @@ export interface Ui {
   settingsOpen: boolean;
   settingsPage: string | null;
   aiOpen: boolean;
+  addView: 'chat' | null;
   editEntry: string | null;
   workoutSheet: { id?: string; date: string } | null;
   toast: Toast | null;
@@ -29,6 +30,7 @@ export const ui = createStore<Ui>({
   settingsOpen: false,
   settingsPage: null,
   aiOpen: false,
+  addView: null,
   editEntry: null,
   workoutSheet: null,
   toast: null,
@@ -60,6 +62,6 @@ export function toast(msg: string, undo?: () => void) {
   toastTimer = window.setTimeout(() => ui.set((s) => (s.toast?.id === id ? { ...s, toast: null } : s)), 4200);
 }
 
-export function openAdd(slot?: string, date?: string) {
-  setUi({ addOpen: true, addSlot: slot ?? guessSlot(), addDate: date ?? ui.get().date });
+export function openAdd(slot?: string, date?: string, view: 'chat' | null = null) {
+  setUi({ addOpen: true, addSlot: slot ?? guessSlot(), addDate: date ?? ui.get().date, addView: view });
 }

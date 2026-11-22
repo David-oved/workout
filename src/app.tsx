@@ -2,7 +2,6 @@ import { useEffect } from 'preact/hooks';
 import { Dock, ToastView, UpdateBanner } from './ui/components';
 import { TodayScreen } from './screens/Today';
 import { AddScreen } from './screens/Add';
-import { AiChat } from './screens/AiChat';
 import { ProgressScreen } from './screens/Progress';
 import { CalendarScreen } from './screens/Calendar';
 import { SettingsScreen } from './screens/Settings';
@@ -35,7 +34,6 @@ export function App() {
       <CalendarScreen />
       <Dock onAdd={() => openAdd()} />
       <AddScreen />
-      <AiChat />
       <SettingsScreen />
       <EditEntrySheet />
       <WorkoutSheet />

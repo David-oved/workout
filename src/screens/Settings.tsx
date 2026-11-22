@@ -5,7 +5,7 @@ import { store, update, defaultState } from '../core/state';
 import { actions } from '../core/actions';
 import { fmt, suggestTargets } from '../core/calc';
 import { DAY_NAMES, todayKey, uid } from '../core/dates';
-import { setUi, ui, toast } from '../ui/ui';
+import { setUi, ui, toast, openAdd } from '../ui/ui';
 import { aiState, getAiKey, maskKey, clearAiKey, testModel, refreshModels, scanModels } from '../ai/gemini';
 import { allowedLevels, modelHint, resolveThinking, THINK_LABELS, type Think } from '../ai/pure';
 import { addDoc, docsState, loadDocs, removeDoc, toggleDoc } from '../ai/docs';
@@ -295,7 +295,7 @@ function SettingsBody() {
               <Row icon={<User />} title="ידע וזיכרון" value={`${set.ai.memory.length} דברים בזיכרון · ${docsS.docs.filter((d) => d.enabled).length} מסמכים כלולים · אינטרנט: ${set.ai.web ? 'פעיל כברירת מחדל' : 'לפי בקשה'}`} onClick={() => setPage('aiknow')} />
             </div>
             <button class="btn primary block" style={{ marginTop: 14 }} disabled={aiS.testing} onClick={() => void testModel()}><RefreshCw class={aiS.testing ? 'spin' : ''} /> {aiS.testing ? 'בודק…' : 'בדוק חיבור למודל'}</button>
-            <button class="btn block" style={{ marginTop: 10 }} onClick={() => { setUi({ settingsOpen: false, aiOpen: true }); }}><Sparkles /> פתח שיחה עם ה-AI</button>
+            <button class="btn block" style={{ marginTop: 10 }} onClick={() => { setUi({ settingsOpen: false }); openAdd(undefined, undefined, 'chat'); }}><Sparkles /> פתח שיחה עם ה-AI</button>
             <button class="btn danger block" style={{ marginTop: 10 }} onClick={() => { if (confirm('לנתק את Gemini? המפתח יימחק מהטלפון.')) { clearAiKey(); toast('נותק'); } }}>נתק</button>
           </>
         ) : <AiSetup onDone={() => toast('Gemini מחובר')} />)}

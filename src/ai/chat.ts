@@ -5,6 +5,7 @@ import { uid } from '../core/dates';
 import { toast, ui } from '../ui/ui';
 import { chatTurn, type ChatTurn } from './gemini';
 import { buildAppData } from './context';
+import { macrosOf, tray } from '../ui/tray';
 import { enabledDocs } from './docs';
 import { extractReply, itemMacros, type AiItem, type Source } from './pure';
 
@@ -120,6 +121,11 @@ function buildTurns(msgs: Msg[], lib: Lib): ChatTurn[] {
   const last = turns[turns.length - 1];
   if (last?.role === 'user') {
     if (d?.edited && d.items) last.text += `\n\n[CARD EDITED BY USER]\n${JSON.stringify(d.items.map(stripId))}`;
+    const manual = tray.get().items.filter((i) => i.src === 'm');
+    if (manual.length) {
+      const lines = manual.map((i) => `- ${i.name}: ${i.unit === 'g' ? `${Math.round(i.amount)} g` : `${i.amount} portion`} (about ${macrosOf(i).k} kcal, ${macrosOf(i).p}g protein)`);
+      last.text += `\n\n[ALSO IN THE USER'S MEAL TRAY, added by tapping tiles, not part of your card]\n${lines.join('\n')}`;
+    }
     last.text += `\n\n${buildAppData(ui.get().addDate)}`;
   }
   return turns;
@@ -243,6 +249,11 @@ export const removeItem = (msgId: string, itemId: string) =>
 
 export const cardTotals = (items: AiItem[]) =>
   items.reduce((a, i) => { const m = itemMacros(i); return { k: a.k + m.k, p: a.p + m.p, c: a.c + m.c, f: a.f + m.f }; }, { k: 0, p: 0, c: 0, f: 0 });
+
+/** מסמן כרטיס כ"נוסף" אחרי שהמגש הוסיף את הפריטים שלו ליום (הביטול מוחק את כל מה שנוסף) */
+export function markAdded(msgId: string, ids: string[], label: string) {
+  patchMsg(msgId, (x) => ({ ...x, card: 'added', addedIds: ids, addedLabel: label }));
+}
 
 /** מוסיף את הכרטיס ליום: מנה לכל פריט, עם אפשרות ביטול */
 export function addCardToDay(msgId: string, date: string, slot: string, slotName: string) {
