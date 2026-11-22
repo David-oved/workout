@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+<meta name="theme-color" content="#000000" />
+<meta name="color-scheme" content="dark" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="workOut" />
+<meta name="format-detection" content="telephone=no" />
+<title>workOut</title>
+<link rel="icon" type="image/svg+xml" href="%BASE_URL%icon.svg" />
+<link rel="apple-touch-icon" href="%BASE_URL%apple-touch-icon.png" />
+<link rel="apple-touch-startup-image" media="(device-width: 402px) and (device-height: 874px) and (-webkit-device-pixel-ratio: 3)" href="%BASE_URL%splash-1206x2622.png" />
+<link rel="apple-touch-startup-image" media="(device-width: 440px) and (device-height: 956px) and (-webkit-device-pixel-ratio: 3)" href="%BASE_URL%splash-1320x2868.png" />
+<link rel="apple-touch-startup-image" media="(device-width: 393px) and (device-height: 852px) and (-webkit-device-pixel-ratio: 3)" href="%BASE_URL%splash-1179x2556.png" />
+<link rel="apple-touch-startup-image" media="(device-width: 430px) and (device-height: 932px) and (-webkit-device-pixel-ratio: 3)" href="%BASE_URL%splash-1290x2796.png" />
+<link rel="apple-touch-startup-image" media="(device-width: 390px) and (device-height: 844px) and (-webkit-device-pixel-ratio: 3)" href="%BASE_URL%splash-1170x2532.png" />
+<style>
+html,body{margin:0;height:100%;background:#000}
+#splash{position:fixed;inset:0;z-index:999;background:#000;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:22px;transition:opacity .55s ease,transform .55s ease}
+#splash.out{opacity:0;transform:scale(1.04);pointer-events:none}
+#splash .glow{position:absolute;width:340px;height:340px;border-radius:50%;background:radial-gradient(closest-side,rgba(92,225,168,.28),transparent);animation:spg 1.6s ease-out both}
+#splash svg{width:116px;height:116px;position:relative;overflow:visible}
+#splash .ring{fill:none;stroke:#5CE1A8;stroke-width:8;stroke-linecap:round;stroke-dasharray:240 320;stroke-dashoffset:240;transform:rotate(-100deg);transform-origin:60px 60px;animation:spr 1.1s cubic-bezier(.3,.9,.3,1) .1s forwards}
+#splash .trk{fill:none;stroke:rgba(255,255,255,.1);stroke-width:8}
+#splash .bar{fill:#fff;opacity:0;transform-origin:60px 60px;animation:spb .7s cubic-bezier(.3,1.5,.5,1) .55s forwards}
+#splash .w{font:500 34px/1 -apple-system,"SF Pro Display",system-ui,sans-serif;letter-spacing:.5px;color:#fff;direction:ltr;position:relative;display:flex}
+#splash .w span{opacity:0;transform:translateY(10px);animation:spw .5s ease forwards}
+#splash .w .o{color:#5CE1A8}
+@keyframes spr{to{stroke-dashoffset:0}}
+@keyframes spb{from{opacity:0;transform:scaleX(.2)}to{opacity:1;transform:none}}
+@keyframes spw{to{opacity:1;transform:none}}
+@keyframes spg{from{opacity:0;transform:scale(.6)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){#splash *{animation-duration:.01s!important;animation-delay:0s!important}}
+</style>
+</head>
+<body>
+<div id="splash" aria-hidden="true">
+  <div class="glow"></div>
+  <svg viewBox="0 0 120 120"><circle class="trk" cx="60" cy="60" r="37"/><circle class="ring" cx="60" cy="60" r="37"/>
+    <g class="bar"><rect x="41" y="58" width="38" height="4.2" rx="2.1"/><rect x="35" y="51" width="6" height="18" rx="2.4"/><rect x="79" y="51" width="6" height="18" rx="2.4"/><rect x="30" y="55" width="4" height="10" rx="1.8"/><rect x="86" y="55" width="4" height="10" rx="1.8"/></g></svg>
+  <div class="w"><span style="animation-delay:.7s">w</span><span style="animation-delay:.75s">o</span><span style="animation-delay:.8s">r</span><span style="animation-delay:.85s">k</span><span class="o" style="animation-delay:.95s">O</span><span class="o" style="animation-delay:1s">u</span><span class="o" style="animation-delay:1.05s">t</span></div>
+</div>
+<div id="app"></div>
+<script type="module" src="/src/main.tsx"></script>
+</body>
+</html>
