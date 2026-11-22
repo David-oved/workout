@@ -189,7 +189,6 @@ export function AiChat() {
         {st.messages.map((m) => (
           <div class={'msg ' + (m.role === 'user' ? 'u' : 'a')} key={m.id}>
             <div class="mcol">
-              {m.streaming && !m.text && <div class="mb typing"><i /><i /><i /></div>}
               {(m.text || m.images?.length || m.fileNames?.length) && (
                 <div class={'mb' + (m.role === 'ai' ? ' md' : '')}>
                   {m.images?.length ? <div class="mimgs">{m.images.map((u) => <img src={u} />)}</div> : null}
@@ -214,6 +213,12 @@ export function AiChat() {
             </div>
           </div>
         ))}
+        {st.busy && (
+          <div class="stage" aria-live="polite">
+            <span class="sdots"><i /><i /><i /></span>
+            <span class="stg" key={st.stage?.n ?? 0}>{st.stage?.text ?? 'קיבל את ההודעה'}</span>
+          </div>
+        )}
         {!st.busy && lastAi?.suggestions?.length ? (
           <div class="sugg row">{lastAi.suggestions.map((s) => <button class="chip" onClick={() => send(s)}>{s}</button>)}</div>
         ) : null}

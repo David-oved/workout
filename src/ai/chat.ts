@@ -31,7 +31,7 @@ export interface Msg {
   suggestions?: string[];
   webFailed?: boolean;
 }
-interface ChatState { messages: Msg[]; busy: boolean; error?: string; detail?: string; web: boolean; deep: boolean }
+interface ChatState { messages: Msg[]; busy: boolean; error?: string; detail?: string; web: boolean; deep: boolean; stage?: { text: string; n: number } }
 
 export interface Attachment { url?: string; data: string; mime: string; name?: string }
 
@@ -55,6 +55,36 @@ function setChat(fn: (s: ChatState) => ChatState) {
     const msgs = chat.get().messages.slice(-40).map((m) => ({ ...m, images: undefined }));
     localStorage.setItem(LS, JSON.stringify({ messages: msgs }));
   } catch { /* ignore */ }
+}
+
+/**
+ * שורת סטטוס חיה: כל שלב מוצג לפחות רגע, ואז מתחלף בבא (בלי וי). התשובה עצמה לא מחכה לשלבים.
+ * שלבים שמגיעים מהר מדי נכנסים לתור קצר; כשהתשובה מגיעה, הכל נעלם.
+ */
+let stageQ: string[] = [];
+let stageTimer: ReturnType<typeof setTimeout> | undefined;
+let stageN = 0;
+let stageShown = '';
+function pumpStage() {
+  if (stageTimer) return;
+  const next = stageQ.shift();
+  if (!next) return;
+  stageShown = next;
+  chat.set((s) => ({ ...s, stage: { text: next, n: ++stageN } }));
+  stageTimer = setTimeout(() => { stageTimer = undefined; pumpStage(); }, 650);
+}
+function stage(text: string) {
+  if (text === stageShown || stageQ[stageQ.length - 1] === text) return;
+  stageQ.push(text);
+  if (stageQ.length > 3) stageQ.splice(0, stageQ.length - 3);
+  pumpStage();
+}
+function clearStages() {
+  stageQ = [];
+  stageShown = '';
+  if (stageTimer) clearTimeout(stageTimer);
+  stageTimer = undefined;
+  chat.set((s) => ({ ...s, stage: undefined }));
 }
 
 export const setWeb = (v: boolean) => chat.set((s) => ({ ...s, web: v }));
@@ -110,6 +140,12 @@ function saveMemory(notes: string[]): string[] {
 async function runTurn() {
   const ph = uid();
   const { web, deep } = chat.get();
+  const lastUser = [...chat.get().messages].reverse().find((m) => m.role === 'user');
+  const seenStages = new Set<string>();
+  const once = (t: string) => { if (!seenStages.has(t)) { seenStages.add(t); stage(t); } };
+  stage('קיבל את ההודעה');
+  if (lastUser?.images?.length || lastUser?.fileNames?.length) stage('קורא את הקבצים שצירפת');
+  if (store.get().settings.ai.shareData) stage('בודק את הנתונים שלך מהאפליקציה');
   setChat((s) => ({
     ...s,
     busy: true,
@@ -120,18 +156,22 @@ async function runTurn() {
   }));
   try {
     const lib = await enabledDocs();
+    if (lib.parts.length + lib.texts.length > 0) stage('קורא את המסמכים מהספרייה');
     const turns = buildTurns(chat.get().messages.filter((m) => m.id !== ph), lib);
     const res = await chatTurn(turns, {
       web,
       deep,
       docs: lib.parts.length + lib.texts.length > 0,
+      onStage: stage,
       onDelta: (acc) => {
         const r = extractReply(acc);
         const text = r || (acc.trimStart().startsWith('{') ? '' : acc);
-        if (text) patchMsg(ph, (m) => (m.text === text ? m : { ...m, text }));
+        if (text) { once('כותב תשובה'); patchMsg(ph, (m) => (m.text === text ? m : { ...m, text })); }
+        if (/"items"\s*:\s*\[\s*\{/.test(acc)) once('מחשב כמויות וערכים תזונתיים');
       },
     });
     const remembered = saveMemory(res.memory);
+    clearStages();
     setChat((s) => {
       let msgs = [...s.messages];
       const idx = msgs.findIndex((m) => m.id === ph);
@@ -157,6 +197,7 @@ async function runTurn() {
       return { ...s, messages: msgs, busy: false };
     });
   } catch (e) {
+    clearStages();
     setChat((s) => ({
       ...s,
       busy: false,

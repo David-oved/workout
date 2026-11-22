@@ -223,3 +223,13 @@ export function modelHint(id: string): string {
   if (/pro/.test(id)) return 'חזק ואיטי';
   return '';
 }
+
+/** שגיאה של "אין מכסה בכלל" (limit: 0), להבדיל מהגבלת קצב זמנית */
+export const isNoQuota = (status: number, raw: string) =>
+  (status === 429 && /limit:\s*0\b/i.test(raw)) || (status === 403 && /free\s*tier|not available for/i.test(raw));
+
+/** מנסה לקרוא "retry in 12.3s" מהודעת שגיאה של מכסה, במילישניות */
+export const retryDelayMs = (raw: string): number => {
+  const m = raw.match(/retry(?:Delay)?[^0-9]{0,12}(\d+(?:\.\d+)?)\s*s/i);
+  return m ? Math.min(20_000, Math.round(parseFloat(m[1]) * 1000)) : 0;
+};

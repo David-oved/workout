@@ -6,7 +6,7 @@ import { actions } from '../core/actions';
 import { fmt, suggestTargets } from '../core/calc';
 import { DAY_NAMES, todayKey, uid } from '../core/dates';
 import { setUi, ui, toast } from '../ui/ui';
-import { aiState, getAiKey, maskKey, clearAiKey, testModel, refreshModels } from '../ai/gemini';
+import { aiState, getAiKey, maskKey, clearAiKey, testModel, refreshModels, scanModels } from '../ai/gemini';
 import { allowedLevels, modelHint, resolveThinking, THINK_LABELS, type Think } from '../ai/pure';
 import { addDoc, docsState, loadDocs, removeDoc, toggleDoc } from '../ai/docs';
 import { AiSetup } from './AiChat';
@@ -305,14 +305,18 @@ function SettingsBody() {
           const cur = (role: 'textModel' | 'visionModel') => set.ai[role];
           const eff = (role: 'textModel' | 'visionModel') => cur(role) || (role === 'textModel' ? 'gemini-3.5-flash-lite' : 'gemini-3.6-flash');
           const levels: Think[] = ['auto', 'minimal', 'low', 'medium', 'high', 'xhigh'];
+          const scanned = Object.keys(aiS.caps).length > 0;
+          const usableModels = scanned ? aiS.models.filter((id) => aiS.caps[id]?.status === 'ok') : aiS.models;
+          const blocked = aiS.models.filter((id) => aiS.caps[id] && aiS.caps[id].status !== 'ok');
+          const lastScan = Math.max(0, ...Object.values(aiS.caps).map((c) => c.at));
           const ModelList = ({ role }: { role: 'textModel' | 'visionModel' }) => (
             <div class="g rows">
               <button class={'opt' + (!cur(role) ? ' on' : '')} onClick={() => pick(role, '')}>
                 <span>אוטומטי<small class="mu" style={{ display: 'block', fontSize: 13 }}>{role === 'textModel' ? 'המהיר ביותר שזמין (מומלץ)' : 'מודל חזק יותר שזמין (מומלץ)'}</small></span><span class="rd" />
               </button>
-              {aiS.models.map((id) => (
+              {usableModels.map((id) => (
                 <button class={'opt' + (cur(role) === id ? ' on' : '')} key={id} onClick={() => pick(role, id)}>
-                  <span><span class="num" style={{ direction: 'ltr', display: 'inline-block' }}>{id}</span>{modelHint(id) && <small class="mu" style={{ display: 'block', fontSize: 13 }}>{modelHint(id)}</small>}</span><span class="rd" />
+                  <span><span class="num" style={{ direction: 'ltr', display: 'inline-block' }}>{id}</span>{(modelHint(id) || aiS.caps[id]) && <small class="mu" style={{ display: 'block', fontSize: 13 }}>{[modelHint(id), aiS.caps[id]?.status === 'ok' ? (aiS.caps[id].levels.length ? `חשיבה שנבדקה: ${aiS.caps[id].levels.map((l) => THINK_LABELS[l as Think] ?? l).join(' · ')}` : 'עובד, בלי שליטה בחשיבה') : ''].filter(Boolean).join(' · ')}</small>}</span><span class="rd" />
                 </button>
               ))}
               {aiS.models.length === 0 && <div class="emp">אין רשימת מודלים. לחץ "רענן רשימה" למטה.</div>}
@@ -320,6 +324,16 @@ function SettingsBody() {
           );
           return (
             <>
+              <div class="g card">
+                <b>בדיקת זמינות אמיתית</b>
+                <div class="mu" style={{ margin: '6px 0 10px', lineHeight: 1.6 }}>שולח בקשה זעירה לכל מודל, בודק אם יש לך מכסה, ואילו רמות חשיבה הוא באמת מקבל. מודלים בלי מכסה במסלול שלך מוסתרים מהרשימות ולא ינוסו.</div>
+                {aiS.scan.running ? (
+                  <div style={{ color: 'var(--accent)', fontSize: 14 }}>בודק {aiS.scan.done + 1} מתוך {aiS.scan.total}: <span class="num" style={{ direction: 'ltr', display: 'inline-block' }}>{aiS.scan.current}</span></div>
+                ) : scanned ? (
+                  <div class="mu num" style={{ fontSize: 13 }}>{usableModels.length} מודלים זמינים{blocked.length ? ` · ${blocked.length} מוסתרים` : ''} · נבדק {new Date(lastScan).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })}</div>
+                ) : <div class="mu" style={{ fontSize: 13 }}>עוד לא נבדק</div>}
+                <button class="btn primary block" style={{ marginTop: 10 }} disabled={aiS.scan.running} onClick={() => void scanModels()}><RefreshCw class={aiS.scan.running ? 'spin' : ''} /> {aiS.scan.running ? 'בודק…' : 'בדוק מה זמין לי'}</button>
+              </div>
               <div class="sec"><span>רמת חשיבה</span></div>
               <div class="grid2" style={{ gridTemplateColumns: 'repeat(3,1fr)' }}>
                 {levels.map((l) => <button class={'chip' + (set.ai.think === l ? ' on' : '')} onClick={() => setAi({ think: l })}>{THINK_LABELS[l]}</button>)}
@@ -343,6 +357,12 @@ function SettingsBody() {
                 <button class="btn" style={{ flex: 1 }} disabled={aiS.testing} onClick={() => void testModel(eff('textModel'))}><RefreshCw class={aiS.testing ? 'spin' : ''} /> בדוק את מודל הטקסט</button>
               </div>
               {aiS.test && <div class="note" style={{ color: aiS.test.ok ? 'var(--accent)' : 'var(--warn)' }}>{aiS.test.ok ? `${aiS.test.model} עובד (${aiS.test.ms} מ״ש)` : `${aiS.test.model}: ${aiS.test.msg}`}</div>}
+              {blocked.length > 0 && (
+                <details class="note" style={{ marginTop: 10 }}>
+                  <summary>מודלים שלא זמינים לך ({blocked.length})</summary>
+                  {blocked.map((id) => <div class="num" key={id} style={{ direction: 'ltr', textAlign: 'right', marginTop: 4 }}>{id}: {aiS.caps[id].status === 'noquota' ? 'אין מכסה במסלול שלך' : (aiS.caps[id].msg || 'לא עונה')}</div>)}
+                </details>
+              )}
               <div class="note">אם מודל שבחרת לא עונה, האפליקציה עוברת לבד לחלופה ומציגה בכל תשובה איזה מודל ענה.</div>
             </>
           );

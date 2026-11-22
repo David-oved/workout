@@ -1,7 +1,7 @@
 import { createStore } from '../core/store';
 import { uid } from '../core/dates';
 import { store } from '../core/state';
-import { SYSTEM_PROMPT, parseAiJson, pickModel, resolveThinking, type AiResult, type Source, type Think } from './pure';
+import { SYSTEM_PROMPT, allowedLevels, isNoQuota, parseAiJson, pickModel, resolveThinking, retryDelayMs, type AiResult, type Source, type Think } from './pure';
 
 /**
  * חיבור ל-Gemini ישירות מהדפדפן (ה-API תומך ב-CORS). המפתח נשמר ב-localStorage בלבד, מחוץ לגיבויים.
@@ -18,6 +18,11 @@ const put = (k: string, v: string | null) => { try { v === null ? localStorage.r
 
 const readModels = (): string[] => { try { return JSON.parse(get(MODELS) ?? '[]'); } catch { return []; } };
 
+/** מה נבדק בפועל על כל מודל במפתח הזה */
+export interface Cap { status: 'ok' | 'noquota' | 'error'; levels: string[]; msg?: string; ms?: number; at: number }
+const CAPS = 'wo:ai-caps';
+const readCaps = (): Record<string, Cap> => { try { return JSON.parse(get(CAPS) ?? '{}'); } catch { return {}; } };
+
 export interface TestResult { ok: boolean; model: string; ms: number; msg?: string }
 export const aiState = createStore({
   configured: !!get(KEY),
@@ -26,6 +31,8 @@ export const aiState = createStore({
   test: undefined as TestResult | undefined,
   testing: false,
   pinned: get(PINNED) === '1',
+  caps: readCaps(),
+  scan: { running: false, done: 0, total: 0, current: '' },
 });
 export const getAiKey = () => get(KEY) ?? '';
 export const maskKey = (k: string) => (k.length > 10 ? `${k.slice(0, 4)}…${k.slice(-4)}` : '••••');
@@ -117,7 +124,9 @@ export async function saveAiKey(key: string): Promise<{ ok: boolean; msg?: strin
     put(MODEL, model);
     put(MODELS, JSON.stringify(models));
     put(PINNED, null);
-    aiState.set({ configured: true, model, models, test: tried[tried.length - 1], testing: false, pinned: false });
+    put(CAPS, null);
+    aiState.set((s) => ({ ...s, configured: true, model, models, test: tried[tried.length - 1], testing: false, pinned: false, caps: {} }));
+    void scanModels();
     return { ok: true };
   } catch (e) {
     if (e instanceof AiHttpError) return { ok: false, msg: e.message };
@@ -130,7 +139,8 @@ export function clearAiKey() {
   put(MODEL, null);
   put(MODELS, null);
   put(PINNED, null);
-  aiState.set({ configured: false, model: '', models: [], test: undefined, testing: false, pinned: false });
+  put(CAPS, null);
+  aiState.set((s) => ({ ...s, configured: false, model: '', models: [], test: undefined, testing: false, pinned: false, caps: {}, scan: { running: false, done: 0, total: 0, current: '' } }));
 }
 
 /** בדיקת חיבור חיה למודל הנוכחי (או לאחר שצוין) */
@@ -188,6 +198,71 @@ export function unpinModel() {
   aiState.set((s) => ({ ...s, pinned: false }));
 }
 
+const setCap = (id: string, cap: Cap) => {
+  const caps = { ...aiState.get().caps, [id]: cap };
+  put(CAPS, JSON.stringify(caps));
+  aiState.set((s) => ({ ...s, caps }));
+};
+
+/** בקשה זעירה למודל, עם רמת חשיבה אם צוינה. מחזיר את התוצאה הגולמית. */
+async function tinyCall(key: string, model: string, level?: string) {
+  const t0 = performance.now();
+  try {
+    const gen: Record<string, unknown> = { maxOutputTokens: 64 };
+    if (level) gen.thinkingConfig = { thinkingLevel: level };
+    const r = await fetch(`${API}/models/${model}:generateContent`, {
+      method: 'POST',
+      headers: { 'x-goog-api-key': key, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: 'ענה במילה אחת: בסדר' }] }], generationConfig: gen }),
+    });
+    const ms = Math.round(performance.now() - t0);
+    if (r.ok) return { ok: true, status: 200, raw: '', ms };
+    const e = await httpError(r);
+    return { ok: false, status: r.status, raw: e.raw || e.message, ms };
+  } catch {
+    return { ok: false, status: 0, raw: 'אין חיבור לאינטרנט', ms: 0 };
+  }
+}
+
+/**
+ * סורק את כל המודלים של המפתח: האם עונים, האם יש מכסה, ואילו רמות חשיבה מתקבלות.
+ * מודל בלי מכסה מסומן ומוסתר מהבחירה, וה-AI לא ינסה אותו.
+ */
+export async function scanModels() {
+  const key = getAiKey();
+  if (!key || aiState.get().scan.running) return;
+  const rank = (id: string) => (/flash-lite/.test(id) ? 0 : /flash/.test(id) ? 1 : /gemini-4/.test(id) ? 2 : 3);
+  const ids = [...aiState.get().models].sort((a, b) => rank(a) - rank(b) || a.localeCompare(b)).slice(0, 12);
+  aiState.set((s) => ({ ...s, scan: { running: true, done: 0, total: ids.length, current: '' } }));
+  const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
+  for (let i = 0; i < ids.length; i++) {
+    const id = ids[i];
+    aiState.set((s) => ({ ...s, scan: { running: true, done: i, total: ids.length, current: id } }));
+    let base = await tinyCall(key, id);
+    if (!base.ok && base.status === 429 && !isNoQuota(429, base.raw)) {
+      await wait(retryDelayMs(base.raw) || 3000); // הגבלת קצב זמנית: מנסים שוב
+      base = await tinyCall(key, id);
+    }
+    if (!base.ok) {
+      setCap(id, { status: isNoQuota(base.status, base.raw) ? 'noquota' : 'error', levels: [], msg: base.raw.slice(0, 160), at: Date.now() });
+    } else {
+      const allowed = allowedLevels(id);
+      const probeLevels = [...new Set([allowed[0], allowed[allowed.length - 1]].filter(Boolean))] as string[];
+      const okLevels: string[] = [];
+      for (const lv of probeLevels) {
+        await wait(700);
+        const r = await tinyCall(key, id, lv);
+        if (r.ok) okLevels.push(lv);
+      }
+      // רמות באמצע הטווח נחשבות תקינות אם שני הקצוות עבדו
+      const levels = okLevels.length === probeLevels.length ? allowed : okLevels;
+      setCap(id, { status: 'ok', levels, ms: base.ms, at: Date.now() });
+    }
+    await wait(700);
+  }
+  aiState.set((s) => ({ ...s, scan: { running: false, done: ids.length, total: ids.length, current: '' } }));
+}
+
 /**
  * סדר המודלים לניסיון. "חזק" (תמונות, מסמכים, חיפוש באינטרנט, חשיבה עמוקה) מול "מהיר" (טקסט רגיל).
  * מודל שהמשתמש בחר בהגדרות קודם, ואחריו האוטומטי.
@@ -200,8 +275,11 @@ function modelOrder(strong: boolean, current: string): string[] {
   const auto = strong
     ? ['gemini-3.6-flash', 'gemini-3.8-flash', current, 'gemini-3.5-flash-lite']
     : ['gemini-3.5-flash-lite', 'gemini-3.6-flash', current, 'gemini-3.8-flash'];
+  const caps = aiState.get().caps;
+  const okCap = (m: string) => !caps[m] || caps[m].status === 'ok'; // מודל שנסרק ואין לו מכסה לא ינוסה
   const base = pref ? [pref, ...auto] : auto;
-  return [...new Set(base.filter((m) => m === pref || m === current || has(m)))].slice(0, 3);
+  const list = [...new Set(base.filter((m) => (m === pref || m === current || has(m)) && okCap(m)))].slice(0, 3);
+  return list.length ? list : [current];
 }
 
 export interface ChatOpts {
@@ -209,6 +287,7 @@ export interface ChatOpts {
   web?: boolean; // חיפוש באינטרנט וקריאת קישורים
   deep?: boolean; // חשיבה עמוקה להודעה הזו
   docs?: boolean; // יש מסמכי ספרייה בבקשה
+  onStage?: (label: string) => void; // דיווח חי על מה שקורה
 }
 export interface ChatResult extends AiResult {
   model: string;
@@ -252,6 +331,7 @@ export async function chatTurn(turns: ChatTurn[], opts: ChatOpts = {}): Promise<
   };
 
   const sources: Source[] = [];
+  const seenQ = new Set<string>();
   const stream = async (model: string, v: V) => {
     const ctl = new AbortController();
     const to = setTimeout(() => ctl.abort(), 120_000);
@@ -276,9 +356,15 @@ export async function chatTurn(turns: ChatTurn[], opts: ChatOpts = {}): Promise<
           if (p?.thought) continue;
           if (typeof p?.text === 'string') acc += p.text;
         }
+        for (const q of cand?.groundingMetadata?.webSearchQueries ?? []) {
+          if (typeof q === 'string' && !seenQ.has(q)) { seenQ.add(q); opts.onStage?.(`חוקר באינטרנט: ״${q.slice(0, 40)}״`); }
+        }
         for (const c of cand?.groundingMetadata?.groundingChunks ?? []) {
           const uri = c?.web?.uri;
-          if (uri && !sources.some((x) => x.uri === uri) && sources.length < 6) sources.push({ uri, title: String(c.web.title || uri).slice(0, 80) });
+          if (uri && !sources.some((x) => x.uri === uri) && sources.length < 6) {
+            sources.push({ uri, title: String(c.web.title || uri).slice(0, 80) });
+            opts.onStage?.(`קורא מקורות (${sources.length})`);
+          }
         }
         opts.onDelta?.(acc);
       };
@@ -314,9 +400,13 @@ export async function chatTurn(turns: ChatTurn[], opts: ChatOpts = {}): Promise<
   try {
     const cur = await ensureModel(key);
     let last: AiHttpError | undefined;
+    let tried = 0;
     for (const model of modelOrder(strong, cur)) {
       for (const v of variants) {
         try {
+          opts.onStage?.(tried++ === 0 ? `שולח ל-${model}` : `עובר ל-${model}`);
+          if (v.t) opts.onStage?.('חוקר באינטרנט');
+          else { const lv = v.x ? resolveThinking(model, wantThink) : undefined; opts.onStage?.(lv && lv !== 'minimal' && lv !== 'low' ? 'חושב לעומק' : 'חושב'); }
           const { acc, blocked } = await stream(model, v);
           if (blocked) throw new Error('הבקשה נחסמה על ידי Gemini. נסה לנסח אחרת');
           if (!acc.trim()) { log.push(`${model}: תשובה ריקה`); continue; }
@@ -338,6 +428,11 @@ export async function chatTurn(turns: ChatTurn[], opts: ChatOpts = {}): Promise<
           log.push(`${model}${v.x ? '' : v.t ? ' (בלי הגדרות מהירות)' : ' (בלי כלים/JSON)'} → ${e.status}: ${e.raw || e.message}`);
           last = e;
           if (e.fatal) throw withDetail(e, log);
+          if (isNoQuota(e.status, e.raw)) {
+            setCap(model, { status: 'noquota', levels: [], msg: e.raw.slice(0, 160), at: Date.now() });
+            opts.onStage?.(`אין מכסה ב-${model}, מחפש מודל אחר`);
+            break;
+          }
           if (e.status === 400) continue;
           if (e.status >= 500 || e.status === 429) await sleep(e.status === 429 ? 2000 : 700);
           break;
