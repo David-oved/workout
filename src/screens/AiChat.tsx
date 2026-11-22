@@ -118,6 +118,8 @@ export function AiChat() {
   const [files, setFiles] = useState<Attachment[]>([]);
   const [fileBusy, setFileBusy] = useState(false);
   const [showDet, setShowDet] = useState(false);
+  const [now, setNow] = useState(Date.now());
+  const autoRetried = useRef<number>(0);
   const bodyRef = useRef<HTMLDivElement>(null);
   const taRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -134,6 +136,20 @@ export function AiChat() {
     // בזמן שהתשובה נכתבת, ממשיכים לגלול למטה
     if (st.busy) { const b = bodyRef.current; if (b) b.scrollTo({ top: b.scrollHeight }); }
   }, [st.messages[st.messages.length - 1]?.text]);
+
+  // שעון עצר אחרי הגבלת קצב, וניסיון אוטומטי אחד כשהזמן עובר
+  useEffect(() => {
+    if (!st.quota) return;
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, [st.quota?.until]);
+  useEffect(() => {
+    const q = st.quota;
+    if (q && q.kind === 'minute' && now >= q.until && autoRetried.current !== q.until && !st.busy) {
+      autoRetried.current = q.until;
+      void retryLast();
+    }
+  }, [now, st.quota?.until]);
 
   const grow = () => {
     const t = taRef.current;
@@ -222,7 +238,31 @@ export function AiChat() {
         {!st.busy && lastAi?.suggestions?.length ? (
           <div class="sugg row">{lastAi.suggestions.map((s) => <button class="chip" onClick={() => send(s)}>{s}</button>)}</div>
         ) : null}
-        {st.error && (
+        {st.error && st.quota && (
+          <div class="aerr quota">
+            <b>{st.error}</b>
+            <div style={{ marginTop: 6, lineHeight: 1.6 }}>
+              {st.quota.kind === 'day'
+                ? `המכסה החינמית היומית נגמרה בכל המודלים הזמינים. היא מתאפסת בערך ב-${new Date(st.quota.until).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })}.`
+                : now < st.quota.until
+                  ? `אפשר לנסות שוב בעוד ${Math.max(1, Math.ceil((st.quota.until - now) / 1000))} שניות. אנסה לבד כשהזמן יעבור.`
+                  : 'הזמן עבר, מנסה שוב…'}
+              {st.quota.limit ? <div class="mu" style={{ marginTop: 4 }}>המגבלה במסלול החינמי: {st.quota.limit} {st.quota.kind === 'day' ? 'ליום' : 'לדקה'} למודל</div> : null}
+            </div>
+            <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginTop: 8, flexWrap: 'wrap' }}>
+              <button disabled={st.quota.kind === 'minute' && now < st.quota.until} onClick={() => void retryLast()}>נסה שוב</button>
+              <a class="src" href="https://ai.dev/rate-limit" target="_blank" rel="noopener">בדוק שימוש ומכסות</a>
+            </div>
+            <div class="mu" style={{ marginTop: 8, fontSize: 12, lineHeight: 1.5 }}>אפשר גם לעבור למודל אחר בהגדרות ← AI תזונה, או להפעיל חיוב ב-AI Studio כדי להסיר את המגבלות החינמיות.</div>
+            {st.detail && (
+              <>
+                <button class="adetb" onClick={() => setShowDet((v) => !v)}>{showDet ? 'הסתר פרטים טכניים' : 'פרטים טכניים'}</button>
+                {showDet && <pre class="adet">{st.detail}</pre>}
+              </>
+            )}
+          </div>
+        )}
+        {st.error && !st.quota && (
           <div class="aerr">
             <div>{st.error} <button onClick={() => void retryLast()}>נסה שוב</button></div>
             {st.detail && (

@@ -31,7 +31,7 @@ export interface Msg {
   suggestions?: string[];
   webFailed?: boolean;
 }
-interface ChatState { messages: Msg[]; busy: boolean; error?: string; detail?: string; web: boolean; deep: boolean; stage?: { text: string; n: number } }
+interface ChatState { messages: Msg[]; busy: boolean; error?: string; detail?: string; web: boolean; deep: boolean; stage?: { text: string; n: number }; quota?: { kind: 'minute' | 'day'; until: number; limit?: string; model?: string } }
 
 export interface Attachment { url?: string; data: string; mime: string; name?: string }
 
@@ -151,6 +151,7 @@ async function runTurn() {
     busy: true,
     error: undefined,
     detail: undefined,
+    quota: undefined,
     deep: false,
     messages: [...s.messages, { id: ph, role: 'ai', text: '', streaming: true }],
   }));
@@ -204,6 +205,7 @@ async function runTurn() {
       messages: s.messages.filter((m) => m.id !== ph),
       error: (e as Error).message,
       detail: (e as { detail?: string }).detail,
+      quota: (e as { quota?: { kind: 'minute' | 'day'; until: number; limit?: string; model?: string } }).quota,
     }));
   }
 }

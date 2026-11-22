@@ -326,7 +326,8 @@ function SettingsBody() {
             <>
               <div class="g card">
                 <b>בדיקת זמינות אמיתית</b>
-                <div class="mu" style={{ margin: '6px 0 10px', lineHeight: 1.6 }}>שולח בקשה זעירה לכל מודל, בודק אם יש לך מכסה, ואילו רמות חשיבה הוא באמת מקבל. מודלים בלי מכסה במסלול שלך מוסתרים מהרשימות ולא ינוסו.</div>
+                <div class="mu" style={{ margin: '6px 0 10px', lineHeight: 1.6 }}>שולח בקשה זעירה לכל מודל (עד 6 מודלים, כ-15 בקשות בסך הכל), בודק אם יש לך מכסה, ואילו רמות חשיבה הוא באמת מקבל. הבדיקה צורכת מהמכסה החינמית, ולכן היא רצה רק כשאתה לוחץ. מודלים בלי מכסה במסלול שלך מוסתרים מהרשימות ולא ינוסו.</div>
+                {aiS.scan.error && <div style={{ color: 'var(--warn)', fontSize: 14, marginBottom: 8, lineHeight: 1.5 }}>{aiS.scan.error}</div>}
                 {aiS.scan.running ? (
                   <div style={{ color: 'var(--accent)', fontSize: 14 }}>בודק {aiS.scan.done + 1} מתוך {aiS.scan.total}: <span class="num" style={{ direction: 'ltr', display: 'inline-block' }}>{aiS.scan.current}</span></div>
                 ) : scanned ? (
@@ -360,7 +361,7 @@ function SettingsBody() {
               {blocked.length > 0 && (
                 <details class="note" style={{ marginTop: 10 }}>
                   <summary>מודלים שלא זמינים לך ({blocked.length})</summary>
-                  {blocked.map((id) => <div class="num" key={id} style={{ direction: 'ltr', textAlign: 'right', marginTop: 4 }}>{id}: {aiS.caps[id].status === 'noquota' ? 'אין מכסה במסלול שלך' : (aiS.caps[id].msg || 'לא עונה')}</div>)}
+                  {blocked.map((id) => <div class="num" key={id} style={{ direction: 'ltr', textAlign: 'right', marginTop: 4 }}>{id}: {aiS.caps[id].status === 'noquota' ? (aiS.caps[id].until ? `המכסה היומית נגמרה, מתאפסת ב-${new Date(aiS.caps[id].until!).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })}` : 'אין מכסה במסלול שלך') : (aiS.caps[id].msg || 'לא עונה')}</div>)}
                 </details>
               )}
               <div class="note">אם מודל שבחרת לא עונה, האפליקציה עוברת לבד לחלופה ומציגה בכל תשובה איזה מודל ענה.</div>
