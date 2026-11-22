@@ -26,6 +26,7 @@ export function defaultSettings(): Settings {
       { id: 'r-thu', dow: 4, time: '18:00', title: 'גב וידיים' },
     ],
     resetHour: 0,
+    cal: { enabled: false, feedId: '', alertMin: 30 },
     ai: { provider: 'none', apiKey: '', model: '' },
   };
 }
@@ -65,7 +66,7 @@ function migrate(raw: any): State {
   return {
     ...base,
     ...raw,
-    settings: { ...base.settings, ...raw.settings, ai: { ...base.settings.ai, ...(raw.settings?.ai ?? {}) } },
+    settings: { ...base.settings, ...raw.settings, ai: { ...base.settings.ai, ...(raw.settings?.ai ?? {}) }, cal: { ...base.settings.cal, ...(raw.settings?.cal ?? {}) } },
     meta: { ...base.meta, ...(raw.meta ?? {}) },
     schema: SCHEMA,
   };

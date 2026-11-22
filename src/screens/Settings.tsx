@@ -1,19 +1,20 @@
-import { useRef, useState } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
 import type { ComponentChildren } from 'preact';
-import { X, ChevronLeft, ChevronRight, User, Target, CalendarDays, Utensils, Sunrise, Download, Upload, RefreshCw, Plus, Minus, Trash, Info, Dumbbell } from 'lucide-preact';
+import { X, ChevronLeft, ChevronRight, User, Target, CalendarDays, CalendarPlus, Copy, Utensils, Sunrise, Download, Upload, RefreshCw, Plus, Minus, Trash, Info, Dumbbell } from 'lucide-preact';
 import { store, update, defaultState } from '../core/state';
 import { actions } from '../core/actions';
 import { fmt, suggestTargets } from '../core/calc';
 import { DAY_NAMES, uid } from '../core/dates';
 import { setUi, ui, toast } from '../ui/ui';
+import { feedState, feedUrl, webcalUrl, hasToken, verifyToken, saveToken, enableFeed, disconnectFeed, syncFeed } from '../core/calfeed';
 import { FullScreen, Sheet } from '../ui/components';
 import { exportBackup, importBackup } from '../core/backup';
 import { APP_VERSION, BUILD_ID, updater, checkForUpdate, applyUpdate } from '../update/updater';
 import type { Macros, Profile, TargetKey } from '../core/types';
 
-type Page = 'home' | 'profile' | 'targets' | 'week' | 'meals' | 'start' | 'backup' | 'updates';
+type Page = 'home' | 'profile' | 'targets' | 'week' | 'meals' | 'start' | 'backup' | 'updates' | 'calendar';
 const TITLES: Record<Page, string> = {
-  home: 'הגדרות', profile: 'פרופיל', targets: 'יעדי תזונה', week: 'שבוע ואימונים', meals: 'ארוחות', start: 'תחילת יום', backup: 'גיבוי', updates: 'עדכונים',
+  home: 'הגדרות', profile: 'פרופיל', targets: 'יעדי תזונה', week: 'שבוע ואימונים', meals: 'ארוחות', start: 'תחילת יום', backup: 'גיבוי', updates: 'עדכונים', calendar: 'יומן וסנכרון',
 };
 const TARGETS: [TargetKey, string][] = [
   ['dorm-rest', 'מעונות · מנוחה'], ['dorm-train', 'מעונות · אימון'], ['home-rest', 'בית · מנוחה'], ['home-train', 'בית · אימון'],
@@ -56,7 +57,12 @@ function diag() {
 }
 
 function SettingsBody() {
-  const [page, setPage] = useState<Page>('home');
+  const [page, setPage] = useState<Page>(() => (ui.get().settingsPage as Page) || 'home');
+  useEffect(() => { if (ui.get().settingsPage) setUi({ settingsPage: null }); }, []);
+  const fs_ = feedState.use((x) => x);
+  const [tok, setTok] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [tokErr, setTokErr] = useState('');
   const s = store.use((x) => x);
   const u = updater.use((x) => x);
   const set = s.settings;
@@ -120,6 +126,7 @@ function SettingsBody() {
               <Row icon={<Sunrise />} title="תחילת יום" value={set.resetHour === 0 ? 'חצות' : `0${set.resetHour}:00 לפנות בוקר`} onClick={() => setPage('start')} />
             </div>
             <div class="g rows" style={{ marginTop: 14 }}>
+              <Row icon={<CalendarPlus />} title="יומן וסנכרון" value={set.cal.enabled ? `פיד פעיל · התראה ${set.cal.alertMin || 'ללא'}${set.cal.alertMin ? ' דק׳ לפני' : ''}` : 'לא מחובר'} onClick={() => setPage('calendar')} />
               <Row icon={<Download />} title="גיבוי" value={`גיבוי אחרון: ${lastTxt}`} onClick={() => setPage('backup')} />
               <Row icon={<RefreshCw />} title="עדכונים" value={updAvail ? 'יש גרסה חדשה' : `גרסה ${APP_VERSION}`} badge={updAvail} onClick={() => setPage('updates')} />
             </div>
@@ -254,6 +261,80 @@ function SettingsBody() {
             </div>
           </>
         )}
+
+        {page === 'calendar' && (() => {
+          const id = set.cal.feedId;
+          const active = set.cal.enabled && hasToken();
+          const ago = fs_.at ? Math.max(0, Math.round((Date.now() - fs_.at) / 60000)) : null;
+          const statusTxt = fs_.status === 'syncing' ? 'מעדכן…' : fs_.status === 'error' ? `שגיאה: ${fs_.msg}` : ago === null ? 'עוד לא עודכן' : ago === 0 ? 'עודכן הרגע' : `עודכן לפני ${ago} דק׳`;
+          if (!active) {
+            return (
+              <>
+                <div class="g card">
+                  <div style={{ fontWeight: 600, marginBottom: 8 }}>חיבור פעם אחת</div>
+                  <ol class="mu" style={{ margin: 0, paddingRight: 20, lineHeight: 1.8 }}>
+                    <li>נכנסים ל-GitHub ויוצרים טוקן (Fine-grained token).</li>
+                    <li>Repository access: Only select repositories ← workout-calendar.</li>
+                    <li>Permissions ← Repository permissions ← Contents ← Read and write.</li>
+                    <li>מעתיקים את הטוקן ומדביקים כאן.</li>
+                  </ol>
+                  <a class="btn block" style={{ marginTop: 12, textDecoration: 'none', color: 'inherit' }} href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">פתח את GitHub</a>
+                </div>
+                <div class="g card">
+                  <label class="lbl">הטוקן (נשמר רק בטלפון הזה, לא נכנס לגיבוי)</label>
+                  <input class="inp" style={{ direction: 'ltr', textAlign: 'left' }} value={tok} placeholder="github_pat_…" autocomplete="off" autocapitalize="none" spellcheck={false} onInput={(e) => { setTok(nv(e)); setTokErr(''); }} />
+                  <div class="err" style={{ gridColumn: 'auto', marginTop: 6 }}>{tokErr}</div>
+                  <button class="btn primary block" disabled={busy} onClick={async () => {
+                    const v = tok.trim();
+                    if (!v) { setTokErr('הדבק את הטוקן'); return; }
+                    setBusy(true);
+                    const r = await verifyToken(v);
+                    if (!r.ok) { setTokErr(r.msg ?? 'שגיאה'); setBusy(false); return; }
+                    saveToken(v);
+                    await enableFeed();
+                    setTok('');
+                    setBusy(false);
+                    toast('הפיד פעיל');
+                  }}>{busy ? 'מחבר…' : 'חבר והפעל'}</button>
+                </div>
+                <div class="note">הקובץ נשמר בריפו ציבורי בכתובת ארוכה ואקראית ויש בו רק שמות ושעות של אימונים.</div>
+              </>
+            );
+          }
+          return (
+            <>
+              <div class="g card">
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <b>הפיד פעיל</b>
+                  <span class="mu" style={{ color: fs_.status === 'error' ? 'var(--warn)' : undefined }}>{statusTxt}</span>
+                </div>
+                <div class="mu" style={{ marginTop: 6 }}>כל שינוי באימונים נשלח ליומן אוטומטית.</div>
+              </div>
+
+              <div class="sec"><span>יומן אפל</span></div>
+              <div class="g card">
+                <button class="btn primary block" onClick={() => { location.href = webcalUrl(id); }}><CalendarPlus /> הוסף ליומן של אפל</button>
+                <div class="mu" style={{ marginTop: 10, lineHeight: 1.6 }}>אחרי אישור "הרשמה", היומן מתעדכן לבד (אפל בודק כל כרבע שעה עד שעה). אם הכפתור לא פותח כלום: הגדרות האייפון ← יומן ← חשבונות ← הוספת חשבון ← אחר ← הוספת יומן מנוי, והדבק את הקישור מהכפתור למטה.</div>
+                <button class="btn block" style={{ marginTop: 10 }} onClick={async () => { try { await navigator.clipboard.writeText(feedUrl(id)); toast('הקישור הועתק'); } catch { toast('לא הצלחתי להעתיק'); } }}><Copy /> העתק קישור</button>
+              </div>
+
+              <div class="sec"><span>Google Calendar</span></div>
+              <div class="g card"><div class="mu" style={{ lineHeight: 1.6 }}>במחשב: Google Calendar ← Other calendars ← From URL, והדבק את אותו קישור. העדכון אצל Google איטי (עד יום).</div></div>
+
+              <div class="sec"><span>התראה לפני אימון</span></div>
+              <div class="chips">
+                {([[0, 'ללא'], [15, '15 דק׳'], [30, '30 דק׳'], [60, 'שעה']] as const).map(([m, l]) => (
+                  <button class={'chip' + (set.cal.alertMin === m ? ' on' : '')} onClick={() => actions.saveSettings({ cal: { ...set.cal, alertMin: m } })}>{l}</button>
+                ))}
+              </div>
+
+              <div style={{ display: 'flex', gap: 10, marginTop: 6 }}>
+                <button class="btn" style={{ flex: 1 }} onClick={() => void syncFeed(true)}><RefreshCw class={fs_.status === 'syncing' ? 'spin' : ''} /> סנכרן עכשיו</button>
+                <button class="btn danger" onClick={() => { if (confirm('לנתק את היומן? הפיד יפסיק להתעדכן והטוקן יימחק מהטלפון.')) { disconnectFeed(); toast('היומן נותק'); } }}>נתק</button>
+              </div>
+            </>
+          );
+        })()}
 
         {page === 'updates' && (
           <>

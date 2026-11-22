@@ -12,6 +12,7 @@ export interface Ui {
   addSlot: string;
   addDate: string;
   settingsOpen: boolean;
+  settingsPage: string | null;
   editEntry: string | null;
   workoutSheet: { id?: string; date: string } | null;
   toast: Toast | null;
@@ -25,6 +26,7 @@ export const ui = createStore<Ui>({
   addSlot: guessSlot(),
   addDate: todayKey(reset),
   settingsOpen: false,
+  settingsPage: null,
   editEntry: null,
   workoutSheet: null,
   toast: null,

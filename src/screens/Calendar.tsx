@@ -69,10 +69,13 @@ export function CalendarScreen() {
       </div>
       <button class="btn block" style={{ marginTop: 12 }} onClick={() => setUi({ workoutSheet: { date: selDate } })}><Plus /> הוסף אימון</button>
 
-      <div class="g card" style={{ marginTop: 16, display: 'flex', gap: 12, alignItems: 'center' }}>
+      <button class="g card" style={{ marginTop: 16, display: 'flex', gap: 12, alignItems: 'center', width: '100%', textAlign: 'right' }} onClick={() => setUi({ settingsOpen: true, settingsPage: 'calendar' })}>
         <CalendarPlus size={22} color="var(--accent)" />
-        <div style={{ flex: 1 }}>סנכרון עם Google Calendar<div class="mu">וגם תזכורות אימון בפוש. מגיע בעדכון הבא.</div></div>
-      </div>
+        <div style={{ flex: 1 }}>
+          {s.settings.cal.enabled ? 'מסונכרן ליומן (אפל / Google)' : 'חבר את היומן של אפל או Google'}
+          <div class="mu">{s.settings.cal.enabled ? 'האימונים מתעדכנים ביומן עם התראה לפני כל אימון' : 'תזכורות לאימונים ישר ליומן שלך'}</div>
+        </div>
+      </button>
     </section>
   );
 }

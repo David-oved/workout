@@ -41,6 +41,7 @@ export interface Settings {
   slots: Slot[];
   routine: Routine[];
   resetHour: number;
+  cal: { enabled: boolean; feedId: string; alertMin: number };
   ai: { provider: 'none' | 'gemini' | 'groq' | 'claude'; apiKey: string; model: string };
 }
 
