@@ -464,6 +464,8 @@ export async function chatTurn(turns: ChatTurn[], opts: ChatOpts = {}): Promise<
           if (blocked) throw new Error('הבקשה נחסמה על ידי Gemini. נסה לנסח אחרת');
           if (!acc.trim()) { log.push(`${model}: תשובה ריקה`); continue; }
           const res = parseAiJson(acc, uid);
+          // כשכופים JSON והמודל החזיר שברי טקסט (למשל reply"}), לא מציגים את זה אלא עוברים לנסיון הבא
+          if (res.fallback && v.j) { log.push(`${model}: תשובה לא תקינה (לא JSON): ${acc.trim().slice(0, 300)}`); continue; }
           return {
             ...res,
             model,

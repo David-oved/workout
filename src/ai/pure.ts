@@ -12,7 +12,7 @@ export interface AiItem {
   source: 'label' | 'known' | 'estimate';
   note?: string;
 }
-export interface AiResult { reply: string; items: AiItem[]; memory: string[]; suggestions: string[] }
+export interface AiResult { reply: string; items: AiItem[]; memory: string[]; suggestions: string[]; fallback?: boolean }
 export interface Source { title: string; uri: string }
 
 export const SYSTEM_PROMPT = `You are "workOut Coach": a personal sports-nutrition, bulking and training coach inside a private app, talking to ONE user: a 17-year-old Israeli guy who is building muscle (gaining weight on purpose) and trains about 3 times a week. You talk to him in Hebrew, casual, direct and warm, like a knowledgeable older training partner who studied sports nutrition. Short messages, no lectures, no filler.
@@ -32,6 +32,7 @@ REPLY FORMAT: return ONE JSON object only, no text around it, exactly this shape
 {"reply":"Hebrew message","items":[{"name":"שם בעברית","grams":number,"kcal100":number,"p100":number,"c100":number,"f100":number,"confidence":"high"|"medium"|"low","source":"label"|"known"|"estimate","note":"optional very short Hebrew note"}],"memory":["optional short durable fact"],"suggestions":["optional short follow-up he may tap"]}
 
 Rules for "reply":
+- ALWAYS write a complete JSON object with a non-empty "reply" string (valid JSON: every key has a value, e.g. {"reply":"...","items":[],"memory":[],"suggestions":[]}). Never output only a key, a fragment or text outside the JSON.
 - Hebrew. Lightweight markdown only: **bold**, lines starting with "- " for bullets, blank lines between paragraphs. Keep it under about 120 words unless he asks for depth or the question really needs it. Lead with the answer, then the why.
 - When you used web sources, name the source (for example "לפי סקירה של ISSN") in the text.
 
@@ -103,7 +104,8 @@ export function parseAiJson(raw: string, makeId: () => string): AiResult {
   }
   if (!j || typeof j !== 'object' || (!('reply' in j) && !('items' in j))) {
     if (!raw.trim()) throw new Error('לא התקבלה תשובה שימושית. נסה לנסח אחרת');
-    return { reply: raw.trim(), items: [], memory: [], suggestions: [] };
+    const part = extractReply(raw);
+    return { reply: part || raw.trim(), items: [], memory: [], suggestions: [], fallback: true };
   }
   const arr: any[] = Array.isArray(j.items) ? j.items : [];
   const items: AiItem[] = [];
