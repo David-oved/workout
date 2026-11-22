@@ -2,8 +2,10 @@ import { render } from 'preact';
 import './styles/global.css';
 import { loadState } from './core/state';
 import { initUpdater } from './update/updater';
+import { initViewport } from './ui/viewport';
 
 const started = performance.now();
+initViewport();
 
 async function boot() {
   await loadState();

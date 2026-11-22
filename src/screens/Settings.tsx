@@ -8,6 +8,7 @@ import { DAY_NAMES, uid } from '../core/dates';
 import { setUi, ui, toast } from '../ui/ui';
 import { FullScreen, Sheet } from '../ui/components';
 import { exportBackup, importBackup } from '../core/backup';
+import { fitEnabled, isStandalone, setFit } from '../ui/viewport';
 import { APP_VERSION, BUILD_ID, updater, checkForUpdate, applyUpdate } from '../update/updater';
 import type { Macros, Profile, TargetKey } from '../core/types';
 
@@ -51,8 +52,8 @@ function diag() {
   const cs = getComputedStyle(probe);
   const t = cs.paddingTop, b = cs.paddingBottom;
   probe.remove();
-  const sa = (navigator as any).standalone === true || matchMedia('(display-mode: standalone)').matches;
-  return `חלון ${innerWidth}×${innerHeight} · מסך ${screen.width}×${screen.height} · safe ${t}/${b} · ${sa ? 'אפליקציה' : 'דפדפן'}`;
+  const appH = document.documentElement.style.getPropertyValue('--app-h') || '-';
+  return `חלון ${innerWidth}×${innerHeight} · מסך ${screen.width}×${screen.height} · אפליקציה ${appH} · safe ${t}/${b} · ${isStandalone() ? 'מסך הבית' : 'דפדפן'} · תיקון ${fitEnabled() ? 'פעיל' : 'כבוי'}`;
 }
 
 function SettingsBody() {
@@ -271,7 +272,10 @@ function SettingsBody() {
                 : <button class="btn block" onClick={() => void checkForUpdate()}><RefreshCw class={u.status === 'checking' ? 'spin' : ''} /> בדוק עדכונים</button>}
             </div>
             <div class="sec"><span><Info size={14} style={{ verticalAlign: -2 }} /> אבחון מסך</span></div>
-            <div class="g card mu num" style={{ direction: 'ltr', textAlign: 'right', fontSize: 12 }}>{diag()}</div>
+            <div class="g card mu num" style={{ fontSize: 12, lineHeight: 1.6 }}>{diag()}</div>
+            <button class="btn block" style={{ marginTop: 10 }} onClick={() => { setFit(!fitEnabled()); setPage('updates'); toast(fitEnabled() ? 'התיקון הופעל' : 'התיקון כובה'); }}>
+              {fitEnabled() ? 'כבה את תיקון הפס השחור' : 'הפעל את תיקון הפס השחור'}
+            </button>
           </>
         )}
       </div>
