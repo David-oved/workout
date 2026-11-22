@@ -6,7 +6,7 @@ import { actions } from '../core/actions';
 import { fmt, suggestTargets } from '../core/calc';
 import { DAY_NAMES, todayKey, uid } from '../core/dates';
 import { setUi, ui, toast } from '../ui/ui';
-import { aiState, getAiKey, maskKey, clearAiKey, setAiModel } from '../ai/gemini';
+import { aiState, getAiKey, maskKey, clearAiKey, testModel, refreshModels } from '../ai/gemini';
 import { AiSetup } from './AiChat';
 import { bridge, scriptSource, pingBridge, connectBridge, disconnectBridge, refreshEvents, syncWorkouts } from '../core/bridge';
 import { feedState, feedUrl, webcalUrl, hasToken, verifyToken, saveToken, enableFeed, disconnectFeed, syncFeed } from '../core/calfeed';
@@ -275,15 +275,30 @@ function SettingsBody() {
           <>
             <div class="g card">
               <div style={{ display: 'flex', justifyContent: 'space-between' }}><b>Gemini מחובר</b><span class="mu num">{maskKey(getAiKey())}</span></div>
-              <div class="mu" style={{ marginTop: 6 }}>מודל: <span class="num">{aiS.model || 'ייבחר אוטומטית'}</span></div>
+              <div class="mu" style={{ marginTop: 8 }}>מודל בשימוש: <b class="num" style={{ color: '#fff', direction: 'ltr', display: 'inline-block' }}>{aiS.model || '—'}</b></div>
+              {aiS.test && (
+                <div style={{ marginTop: 8, fontSize: 14, lineHeight: 1.5, color: aiS.test.ok ? 'var(--accent)' : 'var(--warn)' }}>
+                  {aiS.test.ok ? `נבדק ועובד: ${aiS.test.model} (${aiS.test.ms} מ״ש)` : `הבדיקה נכשלה (${aiS.test.model}): ${aiS.test.msg}`}
+                  {aiS.test.ok && aiS.test.msg ? ` · ${aiS.test.msg}` : ''}
+                </div>
+              )}
             </div>
-            <button class="btn primary block" onClick={() => { setUi({ settingsOpen: false, aiOpen: true }); }}><Sparkles /> פתח שיחה עם ה-AI</button>
-            <div class="sec"><span>מודל (מתקדם)</span></div>
-            <div class="g card">
-              <input class="inp" style={{ direction: 'ltr', textAlign: 'left' }} value={aiS.model} placeholder="gemini-…" autocomplete="off" autocapitalize="none" spellcheck={false} onChange={(e) => setAiModel(nv(e))} />
-              <div class="note" style={{ margin: '8px 0 0' }}>השאר ריק והאפליקציה תבחר לבד את מודל ה-Flash היציב החדש ביותר של המפתח שלך.</div>
+            <button class="btn primary block" disabled={aiS.testing} onClick={() => void testModel()}><RefreshCw class={aiS.testing ? 'spin' : ''} /> {aiS.testing ? 'בודק…' : 'בדוק חיבור למודל'}</button>
+
+            <div class="sec"><span>מודלים זמינים במפתח שלך ({aiS.models.length})</span><button class="syncb" onClick={() => void refreshModels()}><RefreshCw />רענן</button></div>
+            <div class="g rows">
+              {aiS.models.length === 0 && <div class="emp">לחץ "רענן" כדי לטעון את הרשימה</div>}
+              {aiS.models.map((id) => (
+                <button class={'opt' + (id === aiS.model ? ' on' : '')} key={id} disabled={aiS.testing} onClick={() => void testModel(id)}>
+                  <span class="num" style={{ direction: 'ltr' }}>{id}</span><span class="rd" />
+                </button>
+              ))}
             </div>
-            <button class="btn danger block" style={{ marginTop: 14 }} onClick={() => { if (confirm('לנתק את Gemini? המפתח יימחק מהטלפון.')) { clearAiKey(); toast('נותק'); } }}>נתק</button>
+            <div class="note">לחיצה על מודל בודקת אותו, ואם הוא עונה הוא נבחר. מומלץ: gemini-3.8-flash (יציב, מהיר ומבין תמונות).</div>
+            <div class="note">לפי התיעוד של Google, במסלול החינמי ייתכן שתוכן שנשלח משמש לשיפור המוצרים שלהם. אם חשוב לך, אפשר להפעיל חיוב ב-Google AI Studio.</div>
+
+            <button class="btn block" style={{ marginTop: 14 }} onClick={() => { setUi({ settingsOpen: false, aiOpen: true }); }}><Sparkles /> פתח שיחה עם ה-AI</button>
+            <button class="btn danger block" style={{ marginTop: 10 }} onClick={() => { if (confirm('לנתק את Gemini? המפתח יימחק מהטלפון.')) { clearAiKey(); toast('נותק'); } }}>נתק</button>
           </>
         ) : <AiSetup onDone={() => toast('Gemini מחובר')} />)}
 

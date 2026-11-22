@@ -82,9 +82,10 @@ export interface ModelInfo { name: string; methods?: string[] }
 
 /** בוחר את מודל ה-Flash היציב והחדש ביותר שתומך ב-generateContent */
 export function pickModel(models: ModelInfo[]): string | null {
-  const ids = models
-    .filter((m) => !m.methods || m.methods.includes('generateContent'))
-    .map((m) => m.name.replace(/^models\//, ''));
+  // אם התשובה לא מציינת generateContent בכלל (השדה לא מתועד היטב), לא מסננים לפיו
+  const withMethod = models.filter((m) => m.methods?.includes('generateContent'));
+  const pool = withMethod.length ? withMethod : models;
+  const ids = pool.map((m) => m.name.replace(/^models\//, ''));
   const bad = /(lite|preview|exp|image|tts|live|audio|robot|computer|embed|thinking|8b|latest|vision|-\d{3}$)/i;
   const ver = (id: string) => (id.match(/\d+(?:\.\d+)?/g) ?? []).map(Number);
   const cmp = (a: string, b: string) => {
