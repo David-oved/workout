@@ -74,8 +74,12 @@ const TABS: { id: Tab; label: string; Icon: typeof House }[] = [
 
 export function Dock({ onAdd }: { onAdd: () => void }) {
   const tab = ui.use((s) => s.tab);
+  const bar = useRef<HTMLElement>(null);
   const bub = useRef<HTMLDivElement>(null);
   const idx = TABS.findIndex((t) => t.id === tab);
+  const [shown, setShown] = useState<number | null>(null); // הלשונית שמודגשת בזמן גרירה
+  const drag = useRef({ on: false, moved: false, sx: 0, from: 0, f: 0, id: -1 });
+
   const go = (id: Tab) => {
     const el = bub.current;
     setUi({ tab: id });
@@ -85,12 +89,61 @@ export function Dock({ onAdd }: { onAdd: () => void }) {
       setTimeout(() => { el.style.setProperty('--sx', '1'); el.style.setProperty('--sy', '1'); }, 230);
     }
   };
+
+  /** מיקום האצבע ביחס ללשוניות (RTL: הלשונית הראשונה מימין). 0..2, עם התנגדות בקצוות */
+  const fracAt = (clientX: number) => {
+    const r = bar.current!.getBoundingClientRect();
+    const w = (r.width - 10) / TABS.length;
+    const x = (r.right - 5 - clientX) / w - 0.5; // מרכז לשונית 0 = 0
+    return x;
+  };
+  const rubber = (f: number) => (f < 0 ? f * 0.3 : f > TABS.length - 1 ? TABS.length - 1 + (f - (TABS.length - 1)) * 0.3 : f);
+
+  const down = (e: PointerEvent) => {
+    if (!bar.current) return;
+    const f0 = fracAt(e.clientX);
+    drag.current = { on: true, moved: false, sx: e.clientX, from: idx, f: idx, id: e.pointerId };
+    // האצבע על הבועה: אוחזים בה. על לשונית אחרת: הבועה מזנקת אליה כשמתחילים לגרור
+    void f0;
+    try { bar.current.setPointerCapture(e.pointerId); } catch { /* ignore */ }
+    bar.current.classList.add('grab');
+  };
+  const move = (e: PointerEvent) => {
+    const d = drag.current;
+    if (!d.on || !bar.current) return;
+    if (!d.moved && Math.abs(e.clientX - d.sx) < 5) return;
+    if (!d.moved) { d.moved = true; bar.current.classList.add('drag'); }
+    const f = rubber(fracAt(e.clientX));
+    d.f = f;
+    bar.current.style.setProperty('--f', String(f));
+    const near = Math.max(0, Math.min(TABS.length - 1, Math.round(f)));
+    setShown((p) => (p === near ? p : near));
+  };
+  const up = (e: PointerEvent) => {
+    const d = drag.current;
+    if (!d.on || !bar.current) return;
+    d.on = false;
+    bar.current.classList.remove('grab', 'drag');
+    bar.current.style.removeProperty('--f');
+    try { bar.current.releasePointerCapture(d.id); } catch { /* ignore */ }
+    const target = d.moved ? Math.max(0, Math.min(TABS.length - 1, Math.round(d.f))) : Math.max(0, Math.min(TABS.length - 1, Math.round(fracAt(e.clientX))));
+    setShown(null);
+    if (TABS[target].id !== tab) go(TABS[target].id);
+  };
+  const cancel = () => {
+    drag.current.on = false;
+    bar.current?.classList.remove('grab', 'drag');
+    bar.current?.style.removeProperty('--f');
+    setShown(null);
+  };
+
+  const cur = shown ?? idx;
   return (
     <div class="dock">
-      <nav class="g bar" style={{ borderRadius: 34 }}>
+      <nav class="g bar" ref={bar as any} style={{ borderRadius: 34 }} onPointerDown={down as any} onPointerMove={move as any} onPointerUp={up as any} onPointerCancel={cancel}>
         <div class="bub" ref={bub} style={{ '--i': idx } as any} />
-        {TABS.map(({ id, label, Icon }) => (
-          <button class={'tab' + (id === tab ? ' on' : '')} onClick={() => go(id)} aria-label={label}>
+        {TABS.map(({ id, label, Icon }, i) => (
+          <button class={'tab' + (i === cur ? ' on' : '')} onClick={(e) => { if (e.detail === 0) go(id); }} aria-label={label} aria-current={id === tab ? 'page' : undefined}>
             <Icon strokeWidth={2} />
             {label}
           </button>
