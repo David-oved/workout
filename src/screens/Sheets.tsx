@@ -127,7 +127,7 @@ export function WorkoutSheet() {
         const slot = suggestSlot(f.date, ext, s.workouts, f.time, w?.id);
         return (
           <div class="mu" style={{ marginTop: 10, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
-            <span style={{ color: cf.length ? 'var(--warn)' : undefined }}>{cf.length ? `מתנגש עם ״${cf[0].title}״ (${hhmm(cf[0].start)}–${hhmm(cf[0].end)})` : 'פנוי ביומן'}</span>
+            <span style={{ color: cf.length ? 'var(--warn)' : undefined }}>{cf.length ? `מתנגש עם ״${cf[0].title}״ (${hhmm(cf[0].start)} עד ${hhmm(cf[0].end)})` : 'פנוי ביומן'}</span>
             {slot && slot !== f.time && <button class="btn sm" onClick={() => setF({ ...f, time: slot })}>הצע: {slot}</button>}
           </div>
         );

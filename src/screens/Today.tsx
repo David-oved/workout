@@ -1,5 +1,6 @@
-import { Settings as Cog, ChevronLeft, ChevronRight, Plus, Dumbbell, Check, Copy, Download, Siren } from 'lucide-preact';
-import { bridge } from '../core/bridge';
+import { Settings as Cog, ChevronLeft, ChevronRight, Plus, Dumbbell, Check, Copy, Download, Siren, RefreshCw, Utensils } from 'lucide-preact';
+import { EventList } from '../ui/EventList';
+import { bridge, refreshEvents, syncWorkouts } from '../core/bridge';
 import { conflictsFor, eventsOn, hhmm, suggestSlot } from '../core/conflicts';
 import { store } from '../core/state';
 import { actions } from '../core/actions';
@@ -43,6 +44,16 @@ export function TodayScreen() {
   const info = dayInfo(s, date);
   const ext = bridge.use((x) => x.events);
   const connected = bridge.use((x) => x.connected);
+  const evStatus = bridge.use((x) => x.evStatus);
+  const syncStatus = bridge.use((x) => x.syncStatus);
+  const evAt = bridge.use((x) => x.evAt);
+  const busy = evStatus === 'loading' || syncStatus === 'syncing';
+  const doSync = async () => {
+    await Promise.all([refreshEvents(true), syncWorkouts(true)]);
+    const b = bridge.get();
+    toast(b.evStatus === 'error' || b.syncStatus === 'error' ? 'הסנכרון נכשל. בדוק חיבור' : 'היומן מסונכרן');
+  };
+  const agoTxt = evAt ? (Math.round((Date.now() - evAt) / 60000) < 1 ? 'עודכן הרגע' : `עודכן לפני ${Math.round((Date.now() - evAt) / 60000)} דק׳`) : 'סנכרן';
   const dayEv = eventsOn(ext, date);
   const { target, eaten } = info;
   const left = target.k - eaten.k;
@@ -65,21 +76,24 @@ export function TodayScreen() {
         <div class="slot-h">
           <span>{name}{time && <small class="mu" style={{ marginRight: 8 }}>{time}</small>}</span>
           <span class="k">
-            {kc > 0 ? <span class="num" style={{ color: '#fff' }}>{fmt(kc)} קל׳</span> : <span style={{ color: 'var(--mu2)' }}>עדיין לא</span>}
+            {kc > 0 ? <span class="kpill num">{fmt(kc)} קל׳</span> : <span style={{ color: 'var(--mu2)' }}>עדיין לא</span>}
             {id !== '__other' && <button class="addmini" aria-label={`הוסף ל${name}`} onClick={() => openAdd(id, date)}><Plus /></button>}
           </span>
         </div>
-        {list.map((e) => (
-          <button class="ent" key={e.id} onClick={() => setUi({ editEntry: e.id })}>
-            <span>
-              {e.name}{e.est && <span class="est">~</span>}
-              <small class="num">
-                <span class="m1">{e.p} ח׳</span> · <span class="m2">{e.c} פ׳</span> · <span class="m3">{e.f} ש׳</span>
-              </small>
-            </span>
-            <span class="num">{fmt(e.k)}</span>
-          </button>
-        ))}
+        {list.length > 0 && (
+          <div class="slot-b">
+            {list.map((e) => (
+              <button class="ent2" key={e.id} onClick={() => setUi({ editEntry: e.id })}>
+                <span class="eic"><Utensils /></span>
+                <span class="etx">
+                  <b>{e.name}{e.est && <i class="etag">הערכה</i>}</b>
+                  <span class="emac num"><i class="mp">{e.p} ח׳</i><i class="mc2">{e.c} פ׳</i><i class="mf">{e.f} ש׳</i></span>
+                </span>
+                <span class="ekc num"><b>{fmt(e.k)}</b><small>קל׳</small></span>
+              </button>
+            ))}
+          </div>
+        )}
       </div>
     );
   };
@@ -136,7 +150,7 @@ export function TodayScreen() {
             <div class="ic"><Siren size={22} /></div>
             <div class="tx">
               <b>התנגשות ביומן</b>
-              <span class="mu">{w.title} ב-{w.time} מול ״{cf[0].title}״ ({hhmm(cf[0].start)}–{hhmm(cf[0].end)}){cf.length > 1 ? ` ועוד ${cf.length - 1}` : ''}</span>
+              <span class="mu">{w.title} ב-{w.time} מול ״{cf[0].title}״ (<bdi style={{ direction: 'ltr' }}>{hhmm(cf[0].start)}–{hhmm(cf[0].end)}</bdi>){cf.length > 1 ? ` ועוד ${cf.length - 1}` : ''}</span>
             </div>
             {slot && (
               <button class="btn primary sm" onClick={() => { const old = w.time; actions.updateWorkout(w.id, { time: slot }); toast(`האימון הועבר ל-${slot}`, () => actions.updateWorkout(w.id, { time: old })); }}>הזז ל-{slot}</button>
@@ -144,17 +158,15 @@ export function TodayScreen() {
           </div>
         );
       })}
-      {connected && (dayEv.timed.length > 0 || dayEv.allDay.length > 0) && (
+      {connected && (
         <>
-          <div class="sec"><span>ביומן שלך</span></div>
-          <div class="g rows">
-            {dayEv.allDay.map((e) => (
-              <div class="row2" key={e.id}><span>{e.title}<small>{e.cal}</small></span><span class="mu">כל היום</span></div>
-            ))}
-            {dayEv.timed.map((e) => (
-              <div class="row2" key={e.id}><span>{e.title}<small>{e.cal}</small></span><span class="mu num">{hhmm(e.start)}–{hhmm(e.end)}</span></div>
-            ))}
+          <div class="sec">
+            <span>ביומן שלך</span>
+            <button class="syncb" onClick={() => void doSync()} aria-label="סנכרן יומן"><RefreshCw class={busy ? 'spin' : ''} />{busy ? 'מסנכרן…' : agoTxt}</button>
           </div>
+          {dayEv.timed.length > 0 || dayEv.allDay.length > 0
+            ? <EventList timed={dayEv.timed} allDay={dayEv.allDay} isToday={date === today} />
+            : <div class="g card mu" style={{ textAlign: 'center' }}>אין אירועים ביומן ליום הזה</div>}
         </>
       )}
       {info.workouts.length === 0 && (
