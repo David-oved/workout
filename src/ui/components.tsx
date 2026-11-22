@@ -138,7 +138,15 @@ export function Dock({ onAdd }: { onAdd: () => void }) {
   return (
     <div class="dock">
       <nav class="g bar" ref={bar as any} style={{ borderRadius: 34 }} onPointerDown={down as any} onPointerMove={move as any} onPointerUp={up as any} onPointerCancel={cancel}>
-        <div class="bub" ref={bub} style={{ '--i': idx } as any} />
+        <div class="bub" ref={bub} style={{ '--i': idx } as any} aria-hidden="true">
+          <div class="lns">
+            <div class="lnr">
+              {TABS.map(({ id, label, Icon }, i) => (
+                <span class={'lt' + (i === cur ? ' on' : '')} key={id}><Icon strokeWidth={2.2} />{label}</span>
+              ))}
+            </div>
+          </div>
+        </div>
         {TABS.map(({ id, label, Icon }, i) => (
           <button class={'tab' + (i === cur ? ' on' : '')} onClick={(e) => { if (e.detail === 0) go(id); }} aria-label={label} aria-current={id === tab ? 'page' : undefined}>
             <Icon strokeWidth={2} />

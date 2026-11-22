@@ -618,3 +618,22 @@ select.inp{background-image:none}
 .pv-alt button,.pv-acts button{height:28px;padding:0 10px;border-radius:14px;background:rgba(255,255,255,.08);border:.5px solid rgba(255,255,255,.12);font-size:12px;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .pv-acts button:first-child{color:var(--accent);border-color:rgba(92,225,168,.4)}
 .pv-sw{display:block;margin-top:4px;font-size:12px;color:var(--mu);text-decoration:underline;text-underline-offset:3px}
+
+/* ===== עדשת זכוכית בסרגל התחתון (מראה Liquid Glass: שפה צבעונית, עובי קצוות והגדלה בפנים) ===== */
+.bar{box-shadow:inset 0 1.5px 0 rgba(255,255,255,.55),inset 0 -1.5px 1px rgba(255,255,255,.14),inset 1.5px 0 1px rgba(255,255,255,.09),inset -1.5px 0 1px rgba(255,255,255,.09),0 12px 32px rgba(0,0,0,.4)}
+.bub{overflow:hidden;
+  background:radial-gradient(130% 150% at 50% 0%,rgba(255,255,255,.22),rgba(255,255,255,.07) 55%,rgba(255,255,255,.16));
+  box-shadow:inset 0 2px 1px rgba(255,255,255,.8),inset 0 -2px 2px rgba(255,255,255,.5),inset 3px 0 4px -1px rgba(255,100,110,.4),inset -3px 0 4px -1px rgba(100,140,255,.45),inset 0 9px 10px -7px rgba(0,0,0,.4),inset 0 -9px 10px -7px rgba(0,0,0,.3),0 5px 16px rgba(0,0,0,.32)}
+.bub::before{content:"";position:absolute;inset:0;border-radius:inherit;padding:1.5px;pointer-events:none;z-index:3;
+  background:conic-gradient(from 200deg,rgba(255,255,255,.95),rgba(120,200,255,.6),rgba(255,255,255,.12),rgba(255,140,200,.55),rgba(255,255,255,.95),rgba(255,220,120,.55),rgba(255,255,255,.12),rgba(255,255,255,.95));
+  -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask:linear-gradient(#000 0 0) content-box exclude,linear-gradient(#000 0 0)}
+.bub::after{content:"";position:absolute;left:14%;right:14%;top:2px;height:34%;border-radius:50%;background:linear-gradient(180deg,rgba(255,255,255,.35),rgba(255,255,255,0));pointer-events:none;z-index:2}
+.lns{position:absolute;inset:0;transform:scale(1.2);transform-origin:50% 50%;pointer-events:none;transition:transform .3s var(--spring)}
+.bar.drag .lns{transform:scale(1.34)}
+.lnr{position:absolute;top:0;bottom:0;right:0;width:300%;display:flex;transform:translateX(calc(var(--f,var(--i,1))*33.3333%));transition:transform .62s var(--spring)}
+.bar.drag .lnr{transition:none}
+.lt{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;font-size:11px;color:rgba(255,255,255,.92)}
+.lt svg{width:22px;height:22px}
+.lt.on{color:var(--accent)}
+.tab.on{opacity:0}
+.tab{transition:color .3s,opacity .2s}
