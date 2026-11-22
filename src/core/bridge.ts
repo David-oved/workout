@@ -74,9 +74,9 @@ async function callGet(url: string, key: string, params: Record<string, string>)
 }
 
 /** בודק שהכתובת והמפתח עובדים מול ה-Script */
-export async function pingBridge(url: string): Promise<{ ok: boolean; msg?: string; calendars?: string[] }> {
+export async function pingBridge(url: string, key?: string): Promise<{ ok: boolean; msg?: string; calendars?: string[] }> {
   try {
-    const j = await callGet(url.trim(), ensureKey(), { action: 'ping' });
+    const j = await callGet(url.trim(), key ?? ensureKey(), { action: 'ping' });
     if (j?.ok) return { ok: true, calendars: j.calendars };
     if (j?.error === 'unauthorized') return { ok: false, msg: 'המפתח בקוד לא תואם. העתק שוב את הקוד מהאפליקציה, פרסם גרסה חדשה (Deploy ← Manage deployments ← Edit ← New version) ונסה שוב' };
     return { ok: false, msg: String(j?.error ?? 'תשובה לא צפויה') };
@@ -85,7 +85,8 @@ export async function pingBridge(url: string): Promise<{ ok: boolean; msg?: stri
   }
 }
 
-export function connectBridge(url: string, calendars: string[] = []) {
+export function connectBridge(url: string, calendars: string[] = [], key?: string) {
+  if (key) put(KEY_KEY, key);
   put(URL_KEY, url.trim());
   put(CALS_KEY, JSON.stringify(calendars));
   bridge.set((s) => ({ ...s, connected: true, calendars }));

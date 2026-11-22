@@ -288,16 +288,16 @@ function SettingsBody() {
                 </div>
                 <div class="g card">
                   <label class="lbl">כתובת ה-Web app</label>
-                  <input class="inp" style={{ direction: 'ltr', textAlign: 'left' }} value={gurl} placeholder="https://script.google.com/macros/s/…/exec" autocomplete="off" autocapitalize="none" spellcheck={false} onInput={(e) => { setGurl(nv(e)); setGerr(''); }} />
+                  <input class="inp" style={{ direction: 'ltr', textAlign: 'left' }} value={gurl} placeholder="https://script.google.com/macros/s/…/exec (אפשר גם עם #מפתח)" autocomplete="off" autocapitalize="none" spellcheck={false} onInput={(e) => { setGurl(nv(e)); setGerr(''); }} />
                   <div class="err" style={{ gridColumn: 'auto', marginTop: 6 }}>{gerr}</div>
                   <button class="btn primary block" disabled={busy} onClick={async () => {
-                    const v = gurl.trim();
+                    const [v, k] = gurl.trim().split('#');
                     if (!/^https:\/\/script\.google\.com\/.+\/exec/.test(v)) { setGerr('הדבק את הכתובת המלאה שנגמרת ב-/exec'); return; }
                     setBusy(true);
-                    const r = await pingBridge(v);
+                    const r = await pingBridge(v, k || undefined);
                     setBusy(false);
                     if (!r.ok) { setGerr(r.msg ?? 'שגיאה'); return; }
-                    connectBridge(v, r.calendars ?? []);
+                    connectBridge(v, r.calendars ?? [], k || undefined);
                     setGurl('');
                     toast(`מחובר. נמצאו ${r.calendars?.length ?? 0} יומנים`);
                   }}>{busy ? 'מתחבר…' : 'חבר'}</button>
