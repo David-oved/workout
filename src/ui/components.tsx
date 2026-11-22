@@ -105,8 +105,6 @@ export function Dock({ onAdd }: { onAdd: () => void }) {
     drag.current = { on: true, moved: false, sx: e.clientX, from: idx, f: idx, id: e.pointerId };
     // האצבע על הבועה: אוחזים בה. על לשונית אחרת: הבועה מזנקת אליה כשמתחילים לגרור
     void f0;
-    try { bar.current.setPointerCapture(e.pointerId); } catch { /* ignore */ }
-    bar.current.classList.add('grab');
   };
   const move = (e: PointerEvent) => {
     const d = drag.current;
@@ -123,16 +121,15 @@ export function Dock({ onAdd }: { onAdd: () => void }) {
     const d = drag.current;
     if (!d.on || !bar.current) return;
     d.on = false;
-    bar.current.classList.remove('grab', 'drag');
+    bar.current.classList.remove('drag');
     bar.current.style.removeProperty('--f');
-    try { bar.current.releasePointerCapture(d.id); } catch { /* ignore */ }
     const target = d.moved ? Math.max(0, Math.min(TABS.length - 1, Math.round(d.f))) : Math.max(0, Math.min(TABS.length - 1, Math.round(fracAt(e.clientX))));
     setShown(null);
     if (TABS[target].id !== tab) go(TABS[target].id);
   };
   const cancel = () => {
     drag.current.on = false;
-    bar.current?.classList.remove('grab', 'drag');
+    bar.current?.classList.remove('drag');
     bar.current?.style.removeProperty('--f');
     setShown(null);
   };
