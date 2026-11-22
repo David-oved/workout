@@ -359,3 +359,27 @@ select.inp{background-image:none}
 
 .adetb{display:block;margin:8px 0 0!important;color:var(--mu)!important;font-weight:400!important;font-size:13px;text-decoration:underline}
 .adet{direction:ltr;text-align:left;white-space:pre-wrap;word-break:break-word;margin:8px 0 0;padding:10px 12px;border-radius:12px;background:rgba(0,0,0,.35);color:#f3e6c4;font-size:12px;line-height:1.5;font-family:ui-monospace,Menlo,monospace;-webkit-user-select:text;user-select:text}
+
+/* ---------- AI coach additions ---------- */
+.mb.md{white-space:normal}
+.mb.md .mdp{margin:0 0 6px}
+.mb.md .mdp:last-child{margin-bottom:0}
+.mdl{margin:4px 0 6px;padding:0 18px 0 0;display:flex;flex-direction:column;gap:3px}
+.srcs{display:flex;flex-wrap:wrap;gap:6px}
+.src{display:inline-flex;align-items:center;gap:5px;max-width:100%;padding:4px 10px;border-radius:12px;font-size:12px;background:rgba(138,180,255,.12);color:var(--cc);text-decoration:none;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.src svg{width:13px;height:13px;flex:none}
+.remb{display:flex;flex-direction:column;gap:4px}
+.remb span{display:inline-flex;align-items:center;gap:6px;font-size:12px;padding:4px 10px;border-radius:12px;background:rgba(92,225,168,.12);color:var(--accent);align-self:flex-start}
+.remb svg{width:13px;height:13px;flex:none}
+.fchips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px}
+.fchip{display:inline-flex;align-items:center;gap:6px;font-size:12px;padding:4px 10px;border-radius:12px;background:rgba(255,255,255,.1)}
+.fchip svg{width:14px;height:14px}
+.sugg.row{flex-direction:row;flex-wrap:wrap;margin-top:6px}
+.sugg.row .chip{flex:none;height:auto;padding:8px 14px;white-space:normal;text-align:right;border-radius:16px}
+.tgls{display:flex;gap:8px;padding:2px 4px 8px}
+.tg{display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 12px;border-radius:16px;font-size:13px;background:rgba(255,255,255,.07);border:.5px solid rgba(255,255,255,.12);color:var(--mu)}
+.tg svg{width:15px;height:15px}
+.tg.on{background:rgba(92,225,168,.18);border-color:rgba(92,225,168,.5);color:var(--accent)}
+.thumb.pdf{width:auto;min-width:90px;max-width:160px;padding:0 26px 0 10px;display:flex;align-items:center}
+.pdfn{display:flex;align-items:center;gap:6px;font-size:12px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.pdfn svg{width:16px;height:16px;flex:none}

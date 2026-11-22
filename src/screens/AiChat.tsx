@@ -1,18 +1,19 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
-import { Camera, ArrowUp, Trash, X, Sparkles, Plus, Minus, Check, Undo2 } from 'lucide-preact';
+import { Camera, ArrowUp, Trash, X, Sparkles, Plus, Minus, Check, Undo2, Globe, Brain, FileText, Paperclip } from 'lucide-preact';
 import { store } from '../core/state';
 import { dayLabel, todayKey } from '../core/dates';
-import { ui, setUi } from '../ui/ui';
+import { ui, setUi, toast } from '../ui/ui';
 import { FullScreen } from '../ui/components';
 import { aiState, saveAiKey } from '../ai/gemini';
-import { fileToJpeg } from '../ai/image';
+import { fileToAttachment } from '../ai/image';
 import { itemMacros } from '../ai/pure';
-import { addCardToDay, cardTotals, chat, removeItem, resetChat, retryLast, sendMessage, setGrams, undoAdd, type Msg } from '../ai/chat';
+import { addCardToDay, cardTotals, chat, removeItem, resetChat, retryLast, sendMessage, setDeep, setGrams, setWeb, undoAdd, type Attachment, type Msg } from '../ai/chat';
 
 const SUGGEST = [
   'אכלתי חצי פיתה עם שניצל ושתי כפות חומוס',
-  'שלוש ביצים מקושקשות ושתי פרוסות לחם עם גבינה',
   'כמה חלבון נשאר לי היום ומה כדאי לאכול עכשיו?',
+  'למה אני לא עולה מספיק במשקל? תנתח לי את השבועיים האחרונים',
+  'מה המחקר אומר על קריאטין לגיל שלי?',
 ];
 
 /** חיבור מפתח Gemini (משמש גם בצ'אט וגם בהגדרות) */
@@ -40,9 +41,30 @@ export function AiSetup({ onDone }: { onDone?: () => void }) {
         setKey('');
         onDone?.();
       }}>{busy ? 'בודק…' : 'חבר'}</button>
-      <div class="note" style={{ margin: '10px 0 0' }}>הטקסט והתמונות שאתה שולח נשלחים ל-Google כדי לקבל תשובה. ההערכות מקורבות, ותמונה של תווית תזונה מדויקת יותר מצילום של צלחת.</div>
+      <div class="note" style={{ margin: '10px 0 0' }}>הטקסט, התמונות והמסמכים שאתה שולח נשלחים ל-Google כדי לקבל תשובה. ההערכות מקורבות, ותמונה של תווית תזונה מדויקת יותר מצילום של צלחת.</div>
     </div>
   );
+}
+
+/** מרנדר Markdown קל (הדגשה ורשימות) בלי innerHTML */
+function inline(s: string) {
+  return s.split(/(\*\*[^*]+\*\*)/g).map((p, i) => (p.startsWith('**') && p.endsWith('**') && p.length > 4 ? <b key={i}>{p.slice(2, -2)}</b> : p));
+}
+function Md({ text }: { text: string }) {
+  const blocks: any[] = [];
+  let list: string[] = [];
+  const flush = () => {
+    if (list.length) blocks.push(<ul class="mdl" key={'l' + blocks.length}>{list.map((li, i) => <li key={i}>{inline(li)}</li>)}</ul>);
+    list = [];
+  };
+  for (const ln of text.split('\n')) {
+    const m = ln.match(/^\s*(?:[-•*]|\d+\.)\s+(.*)$/);
+    if (m) { list.push(m[1]); continue; }
+    flush();
+    if (ln.trim()) blocks.push(<p class="mdp" key={'p' + blocks.length}>{inline(ln.replace(/^#+\s*/, ''))}</p>);
+  }
+  flush();
+  return <>{blocks}</>;
 }
 
 function MealCard({ m, slotName, onAdd }: { m: Msg; slotName: string; onAdd: () => void }) {
@@ -93,40 +115,49 @@ export function AiChat() {
   const st = chat.use((s) => s);
   const settings = store.use((s) => s.settings);
   const [text, setText] = useState('');
-  const [imgs, setImgs] = useState<{ url: string; data: string; mime: string }[]>([]);
-  const [imgBusy, setImgBusy] = useState(false);
+  const [files, setFiles] = useState<Attachment[]>([]);
+  const [fileBusy, setFileBusy] = useState(false);
   const [showDet, setShowDet] = useState(false);
   const bodyRef = useRef<HTMLDivElement>(null);
   const taRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const slotName = settings.slots.find((x) => x.id === slot)?.name ?? 'ארוחה';
+  const lastAi = [...st.messages].reverse().find((m) => m.role === 'ai');
+
+  // ברירת המחדל של חיפוש באינטרנט מההגדרות משפיעה על הכפתור בצ'אט
+  useEffect(() => { setWeb(settings.ai.web); }, [settings.ai.web]);
 
   useEffect(() => {
     if (open) setTimeout(() => { const b = bodyRef.current; if (b) b.scrollTo({ top: b.scrollHeight, behavior: 'smooth' }); }, 60);
   }, [st.messages.length, st.busy, st.error, open]);
+  useEffect(() => {
+    // בזמן שהתשובה נכתבת, ממשיכים לגלול למטה
+    if (st.busy) { const b = bodyRef.current; if (b) b.scrollTo({ top: b.scrollHeight }); }
+  }, [st.messages[st.messages.length - 1]?.text]);
 
   const grow = () => {
     const t = taRef.current;
     if (t) { t.style.height = 'auto'; t.style.height = Math.min(120, t.scrollHeight) + 'px'; }
   };
-  const send = () => {
-    if (st.busy || imgBusy || (!text.trim() && !imgs.length)) return;
-    const t = text, im = imgs;
-    setText(''); setImgs([]);
+  const send = (override?: string) => {
+    const msg = override ?? text;
+    if (st.busy || fileBusy || (!msg.trim() && !files.length)) return;
+    const fs = files;
+    setText(''); setFiles([]);
     setTimeout(grow, 0);
-    void sendMessage(t, im);
+    void sendMessage(msg, fs);
   };
   const onFiles = async (e: Event) => {
     const input = e.target as HTMLInputElement;
-    const files = [...(input.files ?? [])].slice(0, 3 - imgs.length);
+    const picked = [...(input.files ?? [])].slice(0, 3 - files.length);
     input.value = '';
-    if (!files.length) return;
-    setImgBusy(true);
+    if (!picked.length) return;
+    setFileBusy(true);
     try {
-      const out = await Promise.all(files.map((f) => fileToJpeg(f)));
-      setImgs((p) => [...p, ...out].slice(0, 3));
-    } catch { /* ignore */ }
-    setImgBusy(false);
+      const out = await Promise.all(picked.map((f) => fileToAttachment(f)));
+      setFiles((p) => [...p, ...out].slice(0, 3));
+    } catch (err) { toast((err as Error).message); }
+    setFileBusy(false);
   };
 
   return (
@@ -145,13 +176,13 @@ export function AiChat() {
         {settings.slots.map((sl) => <button class={'chip' + (sl.id === slot ? ' on' : '')} onClick={() => setUi({ addSlot: sl.id })}>{sl.name}</button>)}
       </div>
 
-      <div class="fs-body chat" ref={bodyRef} style={{ paddingBottom: configured ? 170 : 40 }}>
+      <div class="fs-body chat" ref={bodyRef} style={{ paddingBottom: configured ? 210 : 40 }}>
         {!configured && <AiSetup />}
         {configured && st.messages.length === 0 && (
           <div class="aiempty">
             <div class="aiorb"><Sparkles /></div>
-            <div style={{ fontSize: 18, fontWeight: 600, margin: '10px 0 4px' }}>מה אכלת?</div>
-            <div class="mu" style={{ lineHeight: 1.6 }}>תאר במילים, צלם את הצלחת או את התווית. נבין ביחד כמה זה, ותוכל לתקן אותי בכל שלב.</div>
+            <div style={{ fontSize: 18, fontWeight: 600, margin: '10px 0 4px' }}>המאמן האישי שלך</div>
+            <div class="mu" style={{ lineHeight: 1.6 }}>מה אכלת, מה לאכול, ניתוח התקדמות, שאלות על מאסה ותוספים, ומסמכים רפואיים. אפשר לצלם, לצרף PDF ולחפש באינטרנט.</div>
             <div class="sugg">{SUGGEST.map((s) => <button class="chip" style={{ flex: 'none', whiteSpace: 'normal', height: 'auto', padding: '9px 14px', textAlign: 'right', borderRadius: 16 }} onClick={() => { setText(s); setTimeout(() => { grow(); taRef.current?.focus(); }, 0); }}>{s}</button>)}</div>
           </div>
         )}
@@ -159,13 +190,19 @@ export function AiChat() {
           <div class={'msg ' + (m.role === 'user' ? 'u' : 'a')} key={m.id}>
             <div class="mcol">
               {m.streaming && !m.text && <div class="mb typing"><i /><i /><i /></div>}
-              {(m.text || m.images?.length) && (
-                <div class="mb">
+              {(m.text || m.images?.length || m.fileNames?.length) && (
+                <div class={'mb' + (m.role === 'ai' ? ' md' : '')}>
                   {m.images?.length ? <div class="mimgs">{m.images.map((u) => <img src={u} />)}</div> : null}
-                  {m.text}
+                  {m.fileNames?.length ? <div class="fchips">{m.fileNames.map((n) => <span class="fchip"><FileText />{n}</span>)}</div> : null}
+                  {m.role === 'ai' ? <Md text={m.text} /> : m.text}
                 </div>
               )}
-              {m.meta && <div class="mu num" style={{ fontSize: 11, margin: '0 6px', direction: 'ltr' }}>{m.meta.model} · {(m.meta.ms / 1000).toFixed(1)}s</div>}
+              {m.sources?.length ? (
+                <div class="srcs">{m.sources.map((s) => <a class="src" href={s.uri} target="_blank" rel="noopener"><Globe />{s.title}</a>)}</div>
+              ) : null}
+              {m.webFailed && <div class="mu" style={{ fontSize: 12, margin: '0 6px' }}>החיפוש באינטרנט לא זמין כרגע, אז זו תשובה בלי מקורות.</div>}
+              {m.remembered?.length ? <div class="remb">{m.remembered.map((r) => <span><Brain />נשמר בזיכרון: {r}</span>)}</div> : null}
+              {m.meta && <div class="mu num" style={{ fontSize: 11, margin: '0 6px', direction: 'ltr' }}>{m.meta.model} · {(m.meta.ms / 1000).toFixed(1)}s{m.meta.thinking ? ` · think:${m.meta.thinking}` : ''}{m.meta.web ? ' · web' : ''}</div>}
               {m.card === 'draft' && <MealCard m={m} slotName={slotName} onAdd={() => addCardToDay(m.id, date, slot, slotName)} />}
               {m.card === 'added' && (
                 <div class="g mcard added">
@@ -177,6 +214,9 @@ export function AiChat() {
             </div>
           </div>
         ))}
+        {!st.busy && lastAi?.suggestions?.length ? (
+          <div class="sugg row">{lastAi.suggestions.map((s) => <button class="chip" onClick={() => send(s)}>{s}</button>)}</div>
+        ) : null}
         {st.error && (
           <div class="aerr">
             <div>{st.error} <button onClick={() => void retryLast()}>נסה שוב</button></div>
@@ -197,23 +237,31 @@ export function AiChat() {
 
       {configured && (
         <div class="g cmp">
-          {(imgs.length > 0 || imgBusy) && (
+          <div class="tgls">
+            <button class={'tg' + (st.web ? ' on' : '')} onClick={() => setWeb(!st.web)}><Globe />אינטרנט</button>
+            <button class={'tg' + (st.deep ? ' on' : '')} onClick={() => setDeep(!st.deep)}><Brain />חשיבה עמוקה</button>
+          </div>
+          {(files.length > 0 || fileBusy) && (
             <div class="cmpi">
-              {imgs.map((i, idx) => (
-                <span class="thumb" key={idx}><img src={i.url} /><button aria-label="הסר תמונה" onClick={() => setImgs((p) => p.filter((_, j) => j !== idx))}><X /></button></span>
+              {files.map((f, idx) => (
+                <span class={'thumb' + (f.url ? '' : ' pdf')} key={idx}>
+                  {f.url ? <img src={f.url} /> : <span class="pdfn"><FileText />{f.name}</span>}
+                  <button aria-label="הסר קובץ" onClick={() => setFiles((p) => p.filter((_, j) => j !== idx))}><X /></button>
+                </span>
               ))}
-              {imgBusy && <span class="thumb ld" />}
+              {fileBusy && <span class="thumb ld" />}
             </div>
           )}
           <div class="cmpr">
-            <button class="cmpb" aria-label="צרף תמונה" disabled={imgs.length >= 3} onClick={() => fileRef.current?.click()}><Camera /></button>
-            <textarea ref={taRef} rows={1} value={text} placeholder={st.messages.length ? 'תקן אותי או הוסף פרטים…' : 'מה אכלת?'}
+            <button class="cmpb" aria-label="צרף תמונה או PDF" disabled={files.length >= 3} onClick={() => fileRef.current?.click()}>{st.messages.length ? <Paperclip /> : <Camera />}</button>
+            <textarea ref={taRef} rows={1} value={text}
+              placeholder={st.deep ? 'שאלה שדורשת חשיבה…' : st.web ? 'שאל כל דבר (חיפוש באינטרנט פעיל)' : st.messages.length ? 'תקן אותי או שאל משהו…' : 'מה אכלת? או שאל כל דבר'}
               onInput={(e) => { setText((e.target as HTMLTextAreaElement).value); grow(); }} />
-            <button class="cmps" aria-label="שלח" disabled={st.busy || imgBusy || (!text.trim() && !imgs.length)} onClick={send}><ArrowUp /></button>
+            <button class="cmps" aria-label="שלח" disabled={st.busy || fileBusy || (!text.trim() && !files.length)} onClick={() => send()}><ArrowUp /></button>
           </div>
         </div>
       )}
-      <input ref={fileRef} type="file" accept="image/*" multiple style={{ display: 'none' }} onChange={onFiles} />
+      <input ref={fileRef} type="file" accept="image/*,application/pdf" multiple style={{ display: 'none' }} onChange={onFiles} />
     </FullScreen>
   );
 }

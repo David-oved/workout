@@ -1,11 +1,12 @@
 import { createStore } from '../core/store';
 import { store } from '../core/state';
 import { actions } from '../core/actions';
-import { dayInfo } from '../core/calc';
 import { uid } from '../core/dates';
 import { toast, ui } from '../ui/ui';
 import { chatTurn, type ChatTurn } from './gemini';
-import { extractReply, itemMacros, type AiItem } from './pure';
+import { buildAppData } from './context';
+import { enabledDocs } from './docs';
+import { extractReply, itemMacros, type AiItem, type Source } from './pure';
 
 /**
  * שיחה עם ה-AI: הודעות, וכרטיס ארוחה שנבנה ומתעדכן במהלך השיחה.
@@ -16,6 +17,7 @@ export interface Msg {
   role: 'user' | 'ai';
   text: string;
   images?: string[]; // תצוגה מקדימה בלבד, לא נשמרת
+  fileNames?: string[]; // קבצי PDF שצורפו להודעה
   sent?: AiItem[]; // מה שה-AI החזיר (להיסטוריית השיחה)
   items?: AiItem[]; // הכרטיס הנוכחי (ניתן לעריכה)
   card?: 'draft' | 'added' | 'old';
@@ -23,21 +25,28 @@ export interface Msg {
   addedIds?: string[];
   addedLabel?: string;
   streaming?: boolean;
-  meta?: { model: string; ms: number };
+  meta?: { model: string; ms: number; thinking?: string; web?: boolean };
+  sources?: Source[];
+  remembered?: string[];
+  suggestions?: string[];
+  webFailed?: boolean;
 }
-interface ChatState { messages: Msg[]; busy: boolean; error?: string; detail?: string }
+interface ChatState { messages: Msg[]; busy: boolean; error?: string; detail?: string; web: boolean; deep: boolean }
+
+export interface Attachment { url?: string; data: string; mime: string; name?: string }
 
 const LS = 'wo:ai-chat';
 function load(): ChatState {
+  const web = store.get().settings.ai.web;
   try {
     const j = JSON.parse(localStorage.getItem(LS) ?? 'null');
-    if (j && Array.isArray(j.messages)) return { messages: j.messages, busy: false };
+    if (j && Array.isArray(j.messages)) return { messages: j.messages, busy: false, web, deep: false };
   } catch { /* ignore */ }
-  return { messages: [], busy: false };
+  return { messages: [], busy: false, web, deep: false };
 }
 export const chat = createStore<ChatState>(load());
 
-const imgData = new Map<string, { mime: string; data: string }[]>();
+const fileData = new Map<string, { mime: string; data: string }[]>();
 
 function setChat(fn: (s: ChatState) => ChatState) {
   chat.set(fn);
@@ -48,59 +57,95 @@ function setChat(fn: (s: ChatState) => ChatState) {
   } catch { /* ignore */ }
 }
 
+export const setWeb = (v: boolean) => chat.set((s) => ({ ...s, web: v }));
+export const setDeep = (v: boolean) => chat.set((s) => ({ ...s, deep: v }));
+
 export const draftOf = (msgs: Msg[]) => [...msgs].reverse().find((m) => m.card === 'draft');
 
-/** הקשר היום (מה נאכל ומה היעד), כדי שאפשר לשאול "מה כדאי לאכול עכשיו" */
-function dayContext() {
-  const s = store.get();
-  const i = dayInfo(s, ui.get().addDate);
-  const e = i.eaten, t = i.target;
-  return `[TODAY SO FAR] eaten: ${e.k} kcal, protein ${e.p}g, carbs ${e.c}g, fat ${e.f}g. Daily targets: ${t.k} kcal, protein ${t.p}g, carbs ${t.c}g, fat ${t.f}g.`;
-}
+const stripId = ({ id: _id, ...rest }: AiItem) => rest;
 
-function buildTurns(msgs: Msg[]): ChatTurn[] {
-  // שולחים תמונות רק מ-3 ההודעות האחרונות שיש בהן תמונות
-  const withImgs = msgs.filter((m) => m.role === 'user' && imgData.get(m.id)?.length).map((m) => m.id);
-  const keep = new Set(withImgs.slice(-3));
+type Lib = Awaited<ReturnType<typeof enabledDocs>>;
+
+function buildTurns(msgs: Msg[], lib: Lib): ChatTurn[] {
+  // שולחים קבצים רק מ-3 ההודעות האחרונות שיש בהן קבצים
+  const withFiles = msgs.filter((m) => m.role === 'user' && fileData.get(m.id)?.length).map((m) => m.id);
+  const keep = new Set(withFiles.slice(-3));
   const turns: ChatTurn[] = msgs.map((m) => {
     if (m.role === 'user') {
-      const imgs = keep.has(m.id) ? imgData.get(m.id) : undefined;
-      const note = !imgs && m.images?.length ? ' (צורפה תמונה קודמת)' : '';
-      return { role: 'user', text: m.text + note, images: imgs };
+      const files = keep.has(m.id) ? fileData.get(m.id) : undefined;
+      const note = !files && (m.images?.length || m.fileNames?.length) ? ' (צורף קובץ קודם)' : '';
+      return { role: 'user', text: m.text + note, images: files };
     }
     const items = m.items ?? m.sent ?? [];
     return { role: 'model', text: JSON.stringify({ reply: m.text, items: items.map(stripId) }) };
   });
-  // כרטיס שהמשתמש ערך ידנית: מסמנים ל-AI שזו האמת
+  // מסמכי הספרייה הכלולים: מצורפים להודעה הראשונה בשיחה
+  const first = turns.find((t) => t.role === 'user');
+  if (first && (lib.parts.length || lib.texts.length)) {
+    first.text = `[LIBRARY DOCUMENTS the user chose to share: ${lib.names.join(', ')}]\n${lib.texts.join('\n\n')}\n\n${first.text}`;
+    first.images = [...(first.images ?? []), ...lib.parts];
+  }
+  // כרטיס שהמשתמש ערך ידנית: מסמנים ל-AI שזו האמת. ובסוף: נתוני האפליקציה והזיכרון.
   const d = draftOf(msgs);
   const last = turns[turns.length - 1];
   if (last?.role === 'user') {
     if (d?.edited && d.items) last.text += `\n\n[CARD EDITED BY USER]\n${JSON.stringify(d.items.map(stripId))}`;
-    last.text += `\n\n${dayContext()}`;
+    last.text += `\n\n${buildAppData(ui.get().addDate)}`;
   }
   return turns;
 }
-const stripId = ({ id: _id, ...rest }: AiItem) => rest;
+
+function saveMemory(notes: string[]): string[] {
+  if (!notes.length) return [];
+  const ai = store.get().settings.ai;
+  const have = ai.memory.map((x) => x.toLowerCase());
+  const added: string[] = [];
+  for (const n of notes) {
+    if (!have.includes(n.toLowerCase()) && !added.some((x) => x.toLowerCase() === n.toLowerCase())) added.push(n);
+  }
+  if (added.length) actions.saveSettings({ ai: { ...ai, memory: [...ai.memory, ...added].slice(-60) } });
+  return added;
+}
 
 async function runTurn() {
   const ph = uid();
+  const { web, deep } = chat.get();
   setChat((s) => ({
     ...s,
     busy: true,
     error: undefined,
     detail: undefined,
+    deep: false,
     messages: [...s.messages, { id: ph, role: 'ai', text: '', streaming: true }],
   }));
   try {
-    const turns = buildTurns(chat.get().messages.filter((m) => m.id !== ph));
-    const res = await chatTurn(turns, (acc) => {
-      const r = extractReply(acc);
-      if (r) patchMsg(ph, (m) => (m.text === r ? m : { ...m, text: r }));
+    const lib = await enabledDocs();
+    const turns = buildTurns(chat.get().messages.filter((m) => m.id !== ph), lib);
+    const res = await chatTurn(turns, {
+      web,
+      deep,
+      docs: lib.parts.length + lib.texts.length > 0,
+      onDelta: (acc) => {
+        const r = extractReply(acc);
+        const text = r || (acc.trimStart().startsWith('{') ? '' : acc);
+        if (text) patchMsg(ph, (m) => (m.text === text ? m : { ...m, text }));
+      },
     });
+    const remembered = saveMemory(res.memory);
     setChat((s) => {
       let msgs = [...s.messages];
       const idx = msgs.findIndex((m) => m.id === ph);
-      const ai: Msg = { id: ph, role: 'ai', text: res.reply, sent: res.items, meta: { model: res.model, ms: res.ms } };
+      const ai: Msg = {
+        id: ph,
+        role: 'ai',
+        text: res.reply,
+        sent: res.items,
+        meta: { model: res.model, ms: res.ms, thinking: res.thinking, web: web && !res.webFailed },
+        sources: res.sources.length ? res.sources : undefined,
+        remembered: remembered.length ? remembered : undefined,
+        suggestions: res.suggestions.length ? res.suggestions : undefined,
+        webFailed: res.webFailed || undefined,
+      };
       if (res.items.length) {
         const prev = msgs.map((m, i) => [m, i] as const).reverse().find(([m]) => m.card === 'draft');
         if (prev) msgs[prev[1]] = { ...prev[0], items: undefined, card: 'old' };
@@ -122,10 +167,16 @@ async function runTurn() {
   }
 }
 
-export async function sendMessage(text: string, imgs: { url: string; data: string; mime: string }[]) {
+export async function sendMessage(text: string, files: Attachment[]) {
   if (chat.get().busy) return;
-  const m: Msg = { id: uid(), role: 'user', text: text.trim(), images: imgs.map((i) => i.url) };
-  imgData.set(m.id, imgs.map((i) => ({ mime: i.mime, data: i.data })));
+  const m: Msg = {
+    id: uid(),
+    role: 'user',
+    text: text.trim(),
+    images: files.filter((f) => f.mime.startsWith('image/') && f.url).map((f) => f.url!),
+    fileNames: files.filter((f) => !f.mime.startsWith('image/')).map((f) => f.name ?? 'מסמך'),
+  };
+  fileData.set(m.id, files.map((f) => ({ mime: f.mime, data: f.data })));
   setChat((s) => ({ ...s, messages: [...s.messages, m] }));
   await runTurn();
 }
@@ -133,12 +184,13 @@ export async function sendMessage(text: string, imgs: { url: string; data: strin
 export const retryLast = () => (chat.get().busy ? undefined : runTurn());
 
 export function resetChat() {
-  imgData.clear();
-  setChat(() => ({ messages: [], busy: false }));
+  fileData.clear();
+  setChat((s) => ({ messages: [], busy: false, web: s.web, deep: false }));
 }
 
-const patchMsg = (id: string, fn: (m: Msg) => Msg) =>
+function patchMsg(id: string, fn: (m: Msg) => Msg) {
   setChat((s) => ({ ...s, messages: s.messages.map((m) => (m.id === id ? fn(m) : m)) }));
+}
 
 export const setGrams = (msgId: string, itemId: string, grams: number) =>
   patchMsg(msgId, (m) => ({ ...m, edited: true, items: m.items?.map((i) => (i.id === itemId ? { ...i, grams: Math.max(1, Math.round(grams)) } : i)) }));

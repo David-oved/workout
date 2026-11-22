@@ -1,6 +1,7 @@
 import { createStore } from '../core/store';
 import { uid } from '../core/dates';
-import { SYSTEM_PROMPT, parseAiJson, pickModel, type AiResult } from './pure';
+import { store } from '../core/state';
+import { SYSTEM_PROMPT, parseAiJson, pickModel, resolveThinking, type AiResult, type Source, type Think } from './pure';
 
 /**
  * חיבור ל-Gemini ישירות מהדפדפן (ה-API תומך ב-CORS). המפתח נשמר ב-localStorage בלבד, מחוץ לגיבויים.
@@ -181,50 +182,61 @@ function withDetail(e: AiHttpError, log: string[]) {
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-/** חזרה לאוטומטי: מודל מהיר לטקסט ומודל חזק יותר לתמונות */
+/** (ישן) חזרה לאוטומטי */
 export function unpinModel() {
   put(PINNED, null);
   aiState.set((s) => ({ ...s, pinned: false }));
 }
 
 /**
- * רמת חשיבה לפי מודל (לפי התיעוד): ברירת המחדל של המודלים החדשים כוללת חשיבה והיא מאטה.
- * flash-lite ו-3.6 תומכים ב-minimal. ל-3.8 ול-Gemini 4 אסור minimal, אז low.
+ * סדר המודלים לניסיון. "חזק" (תמונות, מסמכים, חיפוש באינטרנט, חשיבה עמוקה) מול "מהיר" (טקסט רגיל).
+ * מודל שהמשתמש בחר בהגדרות קודם, ואחריו האוטומטי.
  */
-const thinkingFor = (id: string): string | undefined => {
-  if (/flash-lite/.test(id) || /^gemini-3\.[56]-flash$/.test(id)) return 'minimal';
-  if (/^gemini-[34]/.test(id)) return 'low';
-  return undefined;
-};
-
-/** סדר המודלים לניסיון: מהיר לטקסט, חזק יותר לתמונות. אם המשתמש נעל מודל, הוא קודם. */
-function modelOrder(hasImages: boolean, current: string): string[] {
+function modelOrder(strong: boolean, current: string): string[] {
   const avail = aiState.get().models;
   const has = (m: string) => !avail.length || avail.includes(m);
-  const auto = hasImages
+  const p = store.get().settings.ai;
+  const pref = strong ? p.visionModel : p.textModel;
+  const auto = strong
     ? ['gemini-3.6-flash', 'gemini-3.8-flash', current, 'gemini-3.5-flash-lite']
     : ['gemini-3.5-flash-lite', 'gemini-3.6-flash', current, 'gemini-3.8-flash'];
-  const base = aiState.get().pinned ? [current, ...auto] : auto;
-  return [...new Set(base.filter((m) => m === current || has(m)))].slice(0, 3);
+  const base = pref ? [pref, ...auto] : auto;
+  return [...new Set(base.filter((m) => m === pref || m === current || has(m)))].slice(0, 3);
 }
 
-export interface ChatResult extends AiResult { model: string; ms: number }
+export interface ChatOpts {
+  onDelta?: (acc: string) => void;
+  web?: boolean; // חיפוש באינטרנט וקריאת קישורים
+  deep?: boolean; // חשיבה עמוקה להודעה הזו
+  docs?: boolean; // יש מסמכי ספרייה בבקשה
+}
+export interface ChatResult extends AiResult {
+  model: string;
+  ms: number;
+  sources: Source[];
+  thinking?: string;
+  webFailed?: boolean;
+}
 
-/** תור בשיחה בזרימה (SSE): מחזיר הודעה ורשימת מנות, ומדווח על הטקסט החלקי תוך כדי. בשגיאת שרת מנסה מודלים אחרים. */
-export async function chatTurn(turns: ChatTurn[], onDelta?: (acc: string) => void): Promise<ChatResult> {
+/** תור בשיחה בזרימה (SSE): הודעה, כרטיס, זיכרון והצעות. בשגיאה מנסה הגדרות ומודלים אחרים. */
+export async function chatTurn(turns: ChatTurn[], opts: ChatOpts = {}): Promise<ChatResult> {
   const key = getAiKey();
   if (!key) throw new Error('אין מפתח Gemini. חבר מפתח בהגדרות');
-  const hasImages = !!turns[turns.length - 1]?.images?.length || turns.some((t) => t.images?.length);
+  const hasImages = turns.some((t) => t.images?.some((i) => i.mime.startsWith('image/')));
+  const strong = hasImages || !!opts.web || !!opts.deep || !!opts.docs || turns.some((t) => t.images?.some((i) => !i.mime.startsWith('image/')));
+  const prefs = store.get().settings.ai;
+  const wantThink: Think = opts.deep ? 'high' : prefs.think;
 
-  const bodyFor = (model: string, v: { x: boolean; j: boolean }) => {
+  type V = { x: boolean; j: boolean; t: boolean };
+  const bodyFor = (model: string, v: V) => {
     const gen: Record<string, unknown> = { temperature: 0.3 };
     if (v.j) gen.responseMimeType = 'application/json';
     if (v.x) {
-      const lvl = thinkingFor(model);
+      const lvl = resolveThinking(model, wantThink);
       if (lvl) gen.thinkingConfig = { thinkingLevel: lvl };
       if (hasImages) gen.mediaResolution = 'MEDIA_RESOLUTION_MEDIUM';
     }
-    return JSON.stringify({
+    const body: Record<string, unknown> = {
       systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
       contents: turns.map((t) => ({
         role: t.role,
@@ -234,12 +246,15 @@ export async function chatTurn(turns: ChatTurn[], onDelta?: (acc: string) => voi
         ],
       })),
       generationConfig: gen,
-    });
+    };
+    if (v.t) body.tools = [{ google_search: {} }, { url_context: {} }];
+    return JSON.stringify(body);
   };
 
-  const stream = async (model: string, v: { x: boolean; j: boolean }) => {
+  const sources: Source[] = [];
+  const stream = async (model: string, v: V) => {
     const ctl = new AbortController();
-    const to = setTimeout(() => ctl.abort(), 75_000);
+    const to = setTimeout(() => ctl.abort(), 120_000);
     try {
       const r = await fetch(`${API}/models/${model}:streamGenerateContent?alt=sse`, {
         method: 'POST',
@@ -256,11 +271,16 @@ export async function chatTurn(turns: ChatTurn[], onDelta?: (acc: string) => voi
         let j: any;
         try { j = JSON.parse(data); } catch { return; }
         if (j?.promptFeedback?.blockReason) blocked = j.promptFeedback.blockReason;
-        for (const p of j?.candidates?.[0]?.content?.parts ?? []) {
+        const cand = j?.candidates?.[0];
+        for (const p of cand?.content?.parts ?? []) {
           if (p?.thought) continue;
           if (typeof p?.text === 'string') acc += p.text;
         }
-        onDelta?.(acc);
+        for (const c of cand?.groundingMetadata?.groundingChunks ?? []) {
+          const uri = c?.web?.uri;
+          if (uri && !sources.some((x) => x.uri === uri) && sources.length < 6) sources.push({ uri, title: String(c.web.title || uri).slice(0, 80) });
+        }
+        opts.onDelta?.(acc);
       };
       const reader = r.body?.getReader();
       if (!reader) {
@@ -284,31 +304,43 @@ export async function chatTurn(turns: ChatTurn[], onDelta?: (acc: string) => voi
     }
   };
 
+  // כשמחפשים באינטרנט אי אפשר לכפות JSON: ההנחיה עושה את זה והפענוח סלחני
+  const variants: V[] = opts.web
+    ? [{ x: true, j: false, t: true }, { x: false, j: false, t: true }, { x: false, j: false, t: false }]
+    : [{ x: true, j: true, t: false }, { x: false, j: true, t: false }, { x: false, j: false, t: false }];
+
   const log: string[] = [];
   const t0 = performance.now();
   try {
     const cur = await ensureModel(key);
     let last: AiHttpError | undefined;
-    for (const model of modelOrder(hasImages, cur)) {
-      for (const v of [{ x: true, j: true }, { x: false, j: true }, { x: false, j: false }]) {
+    for (const model of modelOrder(strong, cur)) {
+      for (const v of variants) {
         try {
           const { acc, blocked } = await stream(model, v);
           if (blocked) throw new Error('הבקשה נחסמה על ידי Gemini. נסה לנסח אחרת');
           if (!acc.trim()) { log.push(`${model}: תשובה ריקה`); continue; }
           const res = parseAiJson(acc, uid);
-          return { ...res, model, ms: Math.round(performance.now() - t0) };
+          return {
+            ...res,
+            model,
+            ms: Math.round(performance.now() - t0),
+            sources,
+            thinking: v.x ? resolveThinking(model, wantThink) : undefined,
+            webFailed: !!opts.web && !v.t,
+          };
         } catch (e) {
           if (!(e instanceof AiHttpError)) {
             if ((e as Error).name === 'AbortError') { log.push(`${model}: פג הזמן`); break; }
             if (e instanceof SyntaxError) { log.push(`${model}: JSON שבור`); continue; }
             throw e;
           }
-          log.push(`${model}${v.x ? '' : v.j ? ' (בלי הגדרות מהירות)' : ' (בלי JSON)'} → ${e.status}: ${e.raw || e.message}`);
+          log.push(`${model}${v.x ? '' : v.t ? ' (בלי הגדרות מהירות)' : ' (בלי כלים/JSON)'} → ${e.status}: ${e.raw || e.message}`);
           last = e;
           if (e.fatal) throw withDetail(e, log);
-          if (e.status === 400) continue; // ננסה את אותו מודל בלי ההגדרות הנוספות
+          if (e.status === 400) continue;
           if (e.status >= 500 || e.status === 429) await sleep(e.status === 429 ? 2000 : 700);
-          break; // עוברים למודל הבא
+          break;
         }
       }
     }

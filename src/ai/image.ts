@@ -21,3 +21,22 @@ export async function fileToJpeg(file: File, max = 1024): Promise<{ url: string;
     URL.revokeObjectURL(src);
   }
 }
+
+const readB64 = (f: File) =>
+  new Promise<string>((res, rej) => {
+    const r = new FileReader();
+    r.onload = () => res(String(r.result).split(',')[1] ?? '');
+    r.onerror = () => rej(new Error('קריאת הקובץ נכשלה'));
+    r.readAsDataURL(f);
+  });
+
+/** קובץ לצירוף בצ'אט: תמונה מכווצת, או PDF כמו שהוא (עד 8MB) */
+export async function fileToAttachment(f: File): Promise<{ url?: string; data: string; mime: string; name: string }> {
+  const isPdf = f.type === 'application/pdf' || f.name.toLowerCase().endsWith('.pdf');
+  if (isPdf) {
+    if (f.size > 8 * 1024 * 1024) throw new Error('קובץ ה-PDF גדול מדי (עד 8MB)');
+    return { data: await readB64(f), mime: 'application/pdf', name: f.name };
+  }
+  const j = await fileToJpeg(f);
+  return { ...j, name: f.name };
+}

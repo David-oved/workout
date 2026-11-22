@@ -42,7 +42,17 @@ export interface Settings {
   routine: Routine[];
   resetHour: number;
   cal: { enabled: boolean; feedId: string; alertMin: number };
-  ai: { provider: 'none' | 'gemini' | 'groq' | 'claude'; apiKey: string; model: string };
+  ai: {
+    provider: 'none' | 'gemini' | 'groq' | 'claude';
+    apiKey: string;
+    model: string;
+    think: 'auto' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh';
+    textModel: string; // ריק = אוטומטי
+    visionModel: string; // ריק = אוטומטי (גם לחיפוש, מסמכים ותמונות)
+    web: boolean; // חיפוש באינטרנט כברירת מחדל
+    shareData: boolean; // לשתף את נתוני האפליקציה עם ה-AI
+    memory: string[]; // מה ש-AI זכר עליי
+  };
 }
 
 export interface State {

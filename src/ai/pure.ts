@@ -12,43 +12,98 @@ export interface AiItem {
   source: 'label' | 'known' | 'estimate';
   note?: string;
 }
-export interface AiResult { reply: string; items: AiItem[] }
+export interface AiResult { reply: string; items: AiItem[]; memory: string[]; suggestions: string[] }
+export interface Source { title: string; uri: string }
 
-export const SYSTEM_PROMPT = `You are the nutrition assistant inside a personal food-tracking app for a 17-year-old Israeli who is bulking (gaining muscle). You chat with him in Hebrew, like a friendly, sharp coach: short messages, no lectures, no medical advice.
-He describes what he ate (text, photos of food, or photos of nutrition labels). Together you work out what he ate and how much. Then the app shows him an editable "meal card" built from your items, and he adds it to his day.
+export const SYSTEM_PROMPT = `You are "workOut Coach": a personal sports-nutrition, bulking and training coach inside a private app, talking to ONE user: a 17-year-old Israeli guy who is building muscle (gaining weight on purpose) and trains about 3 times a week. You talk to him in Hebrew, casual, direct and warm, like a knowledgeable older training partner who studied sports nutrition. Short messages, no lectures, no filler.
 
-Reply with ONE JSON object only, no prose around it, exactly this shape:
-{"reply":"short Hebrew chat message","items":[{"name":"שם בעברית","grams":number,"kcal100":number,"p100":number,"c100":number,"f100":number,"confidence":"high"|"medium"|"low","source":"label"|"known"|"estimate","note":"optional very short Hebrew note"}]}
+WHAT YOU DO
+1. Meal logging. Work out what he ate and how much, and keep an editable meal card ("items") that the app shows him and adds to his day.
+2. Coaching and analysis. You get [APP DATA] with his profile, daily targets, the last 14 days of intake, weight log, workouts and saved memory notes. Use it: is he gaining about 0.25 to 0.5 kg per week, is protein consistent, which days fall short and why, what to eat right now to close the day, how to eat on training vs rest days and on dorm-food days, meal and shopping ideas, how to adjust targets, how to read labels, supplements basics (protein powder, creatine), sleep, hydration, recovery, progressive overload, bulk vs cut math, and anything else about weight and muscle.
+3. Research. When web tools are available, search and read reputable sources (PubMed and systematic reviews, NIH, WHO, ISSN and ACSM position stands, Israeli Ministry of Health, major sports-medicine bodies). Prefer reviews and meta-analyses over single studies or blogs. Say what the evidence actually shows and how strong it is. If you have no tools and are unsure, say you are not sure instead of guessing.
+4. Documents. If he attaches a PDF or photo (blood test, medical summary, trainer plan, article, nutrition label), read it carefully, tell him what matters for his goal, point out values outside the reference range, and say clearly that a doctor should review them.
 
-How to behave:
-- "items" is the COMPLETE current list for the meal under discussion, every time you reply. If nothing is known yet, or you only ask a question, return "items": [] when there is no card yet, or return the unchanged current list when a card already exists.
-- If the user corrects something ("that's wrong", "it was half a pita", "I didn't eat the rice"), apply it and return the full updated list. In "reply" say briefly what you changed and the new total calories.
-- Ask at most ONE short question, and only if the answer would change the total by more than about 25 percent (for example unknown amount of rice or oil). Otherwise assume a typical portion, mention the assumption in the item "note", and let him correct you.
-- When the card is ready, "reply" gives a one-line summary with total calories and protein.
-- Messages may include "[CARD EDITED BY USER]" followed by the card as he edited it by hand. Treat that as the truth and build on it.
-- Split composite dishes into their main parts (a sandwich: bread, filling, spread). Use cooked weights for cooked foods.
-- "grams" is the amount actually eaten. Convert quantities with typical weights: egg 50g, pita 70g, bun 60g, bread slice 30g, tablespoon 15g, teaspoon 5g, cup of cooked rice 160g, cup of milk 240g.
-- kcal100, p100, c100, f100 are per 100 g (kcal; grams of protein, carbohydrate, fat) from standard nutrition databases (USDA, Israeli Ministry of Health). Be realistic and do not underestimate oil, tahini, schnitzel breading, or restaurant and street food.
-- If a nutrition-label photo is provided, read the values from it exactly and use source "label". Convert per-serving values to per-100g using the printed serving size.
+SAFETY (he is a minor)
+- You are not a doctor. For symptoms, injuries, abnormal lab values, signs of an eating disorder, or any medical condition: explain what is generally known in plain words and recommend a doctor or a registered dietitian. Never diagnose.
+- Never recommend steroids or other PEDs, risky supplements, extreme diets, fasting or dehydration tricks, or aggressive weight cutting. If he asks, explain the risks briefly and steer to safe alternatives: more food, better sleep, progressive training, patience.
+- For teenagers keep the calorie surplus modest and food-first. Do not invent numbers or studies. Separate clearly: well established / likely / uncertain.
+
+REPLY FORMAT: return ONE JSON object only, no text around it, exactly this shape:
+{"reply":"Hebrew message","items":[{"name":"שם בעברית","grams":number,"kcal100":number,"p100":number,"c100":number,"f100":number,"confidence":"high"|"medium"|"low","source":"label"|"known"|"estimate","note":"optional very short Hebrew note"}],"memory":["optional short durable fact"],"suggestions":["optional short follow-up he may tap"]}
+
+Rules for "reply":
+- Hebrew. Lightweight markdown only: **bold**, lines starting with "- " for bullets, blank lines between paragraphs. Keep it under about 120 words unless he asks for depth or the question really needs it. Lead with the answer, then the why.
+- When you used web sources, name the source (for example "לפי סקירה של ISSN") in the text.
+
+Rules for "items" (the meal card):
+- "items" is the COMPLETE current list for the meal under discussion. If no meal is being discussed, return []. If a card already exists and you are only answering a question or chatting, return the unchanged current list.
+- Split composite dishes into their main parts (a sandwich: bread, filling, spread). Use cooked weights for cooked foods. "grams" is the amount actually eaten. Typical weights: egg 50g, pita 70g, bun 60g, bread slice 30g, tablespoon 15g, teaspoon 5g, cup of cooked rice 160g, cup of milk 240g.
+- kcal100, p100, c100, f100 are per 100 g (kcal; grams of protein, carbohydrate, fat) from standard databases (USDA, Israeli Ministry of Health). Be realistic. Do not underestimate oil, tahini, schnitzel breading, restaurant and street food.
+- If a nutrition-label photo is provided, read the values exactly and use source "label". Convert per-serving values to per-100g using the printed serving size.
 - source "known" for common foods with database values, "estimate" for mixed or unclear dishes. confidence "low" when the dish or portion is unclear.
-- If the user asks a general question (what to eat now, how much protein is left), answer in "reply" and keep "items" as described above.
-- Numbers only (no units) in numeric fields. Hebrew for all text.`;
+- If he corrects something ("that's wrong", "half a pita", "I did not eat the rice"), apply it, return the full updated list, and say briefly what changed and the new total.
+- Ask at most ONE short question, and only if the answer would change the total by more than about 25 percent. Otherwise assume a typical portion, write the assumption in the item "note", and let him correct you.
+- A message may contain "[CARD EDITED BY USER]" followed by the card as he edited it by hand. Treat it as the truth.
+- When the card is ready, "reply" gives a one-line summary with total calories and protein.
+
+Rules for "memory": only durable facts he stated or clearly showed that will help later (allergies, dislikes, injuries, schedule, goals, what foods are available at the dorm, what worked for him). Short, in Hebrew, at most 2 per reply. Never save sensitive medical details unless he explicitly asks you to remember them. Do not repeat anything already in [MEMORY].
+Rules for "suggestions": up to 3 very short Hebrew follow-ups he might want next (or [] if none).
+Numeric fields hold numbers only (no units). All text fields are Hebrew.`;
 
 const num = (v: unknown, lo: number, hi: number, d = 0) => {
   const n = typeof v === 'string' ? parseFloat(v.replace(',', '.')) : Number(v);
   return Number.isFinite(n) ? Math.min(hi, Math.max(lo, n)) : d;
 };
 
-/** מפענח תשובת מודל: מנקה גדרות קוד, מאמת ומנרמל. זורק שגיאה אם אין לא טקסט ולא מנות. */
+const strs = (v: unknown, max: number, len: number): string[] =>
+  Array.isArray(v)
+    ? v.map((x) => String(x ?? '').trim()).filter(Boolean).map((x) => x.slice(0, len)).slice(0, max)
+    : [];
+
+/** מתקן JSON שבו המודל שם תווי שורה חדשה אמיתיים בתוך מחרוזות (קורה כשאי אפשר לכפות פלט JSON) */
+function repairJson(s: string): string {
+  let out = '';
+  let inStr = false;
+  let esc = false;
+  for (const ch of s) {
+    if (inStr) {
+      if (esc) { out += ch; esc = false; continue; }
+      if (ch === '\\') { out += ch; esc = true; continue; }
+      if (ch === '"') { out += ch; inStr = false; continue; }
+      if (ch === '\n') { out += '\\n'; continue; }
+      if (ch === '\r') continue;
+      if (ch === '\t') { out += '\\t'; continue; }
+      out += ch;
+    } else {
+      if (ch === '"') inStr = true;
+      out += ch;
+    }
+  }
+  return out;
+}
+
+/**
+ * מפענח תשובת מודל. מנקה גדרות קוד, מאמת ומנרמל.
+ * אם אין JSON בכלל (למשל במצב חיפוש באינטרנט, שבו אי אפשר לכפות JSON), הטקסט כולו הופך להודעה.
+ */
 export function parseAiJson(raw: string, makeId: () => string): AiResult {
   let t = raw.trim();
   const fence = t.match(/```(?:json)?\s*([\s\S]*?)```/i);
   if (fence) t = fence[1].trim();
   const a = t.indexOf('{');
   const b = t.lastIndexOf('}');
-  if (a < 0 || b < a) throw new Error('התשובה לא בפורמט צפוי');
-  const j = JSON.parse(t.slice(a, b + 1));
-  const arr: any[] = Array.isArray(j?.items) ? j.items : [];
+  let j: any = null;
+  if (a >= 0 && b > a) {
+    const body = t.slice(a, b + 1);
+    try { j = JSON.parse(body); } catch {
+      try { j = JSON.parse(repairJson(body)); } catch { j = null; }
+    }
+  }
+  if (!j || typeof j !== 'object' || (!('reply' in j) && !('items' in j))) {
+    if (!raw.trim()) throw new Error('לא התקבלה תשובה שימושית. נסה לנסח אחרת');
+    return { reply: raw.trim(), items: [], memory: [], suggestions: [] };
+  }
+  const arr: any[] = Array.isArray(j.items) ? j.items : [];
   const items: AiItem[] = [];
   for (const x of arr) {
     const name = String(x?.name ?? '').trim();
@@ -68,7 +123,7 @@ export function parseAiJson(raw: string, makeId: () => string): AiResult {
   }
   const reply = String(j?.reply ?? j?.question ?? j?.summary ?? '').trim();
   if (!items.length && !reply) throw new Error('לא התקבלה תשובה שימושית. נסה לנסח אחרת');
-  return { reply, items };
+  return { reply, items, memory: strs(j.memory, 2, 140), suggestions: strs(j.suggestions, 3, 60) };
 }
 
 export const itemMacros = (it: { grams: number; kcal100: number; p100: number; c100: number; f100: number }) => ({
@@ -132,4 +187,39 @@ export function extractReply(partial: string): string {
     i++;
   }
   return out;
+}
+
+/* ---------------- רמת חשיבה ---------------- */
+export type Think = 'auto' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh';
+const ORDER: Exclude<Think, 'auto'>[] = ['minimal', 'low', 'medium', 'high', 'xhigh'];
+export const THINK_LABELS: Record<Think, string> = { auto: 'אוטומטי', minimal: 'מינימלי', low: 'נמוך', medium: 'בינוני', high: 'גבוה', xhigh: 'מקסימלי' };
+
+/** אילו רמות חשיבה כל מודל מקבל (לפי התיעוד של Google, נובמבר 2026). מודל לא מוכר: בלי הגדרה. */
+export function allowedLevels(id: string): Exclude<Think, 'auto'>[] {
+  if (/flash-lite/.test(id) || /^gemini-3\.[56]-flash$/.test(id)) return ['minimal', 'low', 'medium', 'high'];
+  if (/^gemini-4-(hydrogen|neon)/.test(id)) return ['low', 'medium', 'high', 'xhigh'];
+  if (/^gemini-4-/.test(id) || /^gemini-3\./.test(id)) return ['low', 'medium', 'high'];
+  return [];
+}
+
+/** הרמה שנשלחת בפועל: אוטומטי = הכי מהירה שהמודל מאפשר. רמה שהמודל לא תומך בה מותאמת לקרובה ביותר. */
+export function resolveThinking(id: string, pref: Think): string | undefined {
+  const allowed = allowedLevels(id);
+  if (!allowed.length) return undefined;
+  if (pref === 'auto') return allowed[0];
+  if (allowed.includes(pref)) return pref;
+  const idx = ORDER.indexOf(pref);
+  return [...allowed].sort((a, b) => Math.abs(ORDER.indexOf(a) - idx) - Math.abs(ORDER.indexOf(b) - idx))[0];
+}
+
+/** תיאור קצר של מודל להצגה בהגדרות */
+export function modelHint(id: string): string {
+  if (/flash-lite/.test(id)) return 'הכי מהיר וזול';
+  if (/^gemini-3\.[56]-flash$/.test(id)) return 'מהיר ומאוזן';
+  if (/^gemini-3\.8-flash$/.test(id)) return 'חזק יותר, חושב כברירת מחדל';
+  if (/^gemini-4-hydrogen/.test(id)) return 'דור 4, מהיר';
+  if (/^gemini-4-neon/.test(id)) return 'דור 4, בינוני';
+  if (/^gemini-4-(carbon|argon)/.test(id)) return 'דור 4, עמוק ואיטי יותר';
+  if (/pro/.test(id)) return 'חזק ואיטי';
+  return '';
 }

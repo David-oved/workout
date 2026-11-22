@@ -27,7 +27,7 @@ export function defaultSettings(): Settings {
     ],
     resetHour: 0,
     cal: { enabled: false, feedId: '', alertMin: 30 },
-    ai: { provider: 'none', apiKey: '', model: '' },
+    ai: { provider: 'none', apiKey: '', model: '', think: 'auto', textModel: '', visionModel: '', web: false, shareData: true, memory: [] },
   };
 }
 

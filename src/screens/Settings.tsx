@@ -6,7 +6,9 @@ import { actions } from '../core/actions';
 import { fmt, suggestTargets } from '../core/calc';
 import { DAY_NAMES, todayKey, uid } from '../core/dates';
 import { setUi, ui, toast } from '../ui/ui';
-import { aiState, getAiKey, maskKey, clearAiKey, testModel, refreshModels, unpinModel } from '../ai/gemini';
+import { aiState, getAiKey, maskKey, clearAiKey, testModel, refreshModels } from '../ai/gemini';
+import { allowedLevels, modelHint, resolveThinking, THINK_LABELS, type Think } from '../ai/pure';
+import { addDoc, docsState, loadDocs, removeDoc, toggleDoc } from '../ai/docs';
 import { AiSetup } from './AiChat';
 import { bridge, scriptSource, pingBridge, connectBridge, disconnectBridge, refreshEvents, syncWorkouts } from '../core/bridge';
 import { feedState, feedUrl, webcalUrl, hasToken, verifyToken, saveToken, enableFeed, disconnectFeed, syncFeed } from '../core/calfeed';
@@ -15,9 +17,9 @@ import { exportBackup, importBackup } from '../core/backup';
 import { APP_VERSION, BUILD_ID, updater, checkForUpdate, applyUpdate } from '../update/updater';
 import type { Macros, Profile, TargetKey } from '../core/types';
 
-type Page = 'home' | 'profile' | 'targets' | 'week' | 'meals' | 'start' | 'backup' | 'updates' | 'calendar' | 'gcal' | 'ai';
+type Page = 'home' | 'profile' | 'targets' | 'week' | 'meals' | 'start' | 'backup' | 'updates' | 'calendar' | 'gcal' | 'ai' | 'aimodels' | 'aiknow';
 const TITLES: Record<Page, string> = {
-  home: 'הגדרות', profile: 'פרופיל', targets: 'יעדי תזונה', week: 'שבוע ואימונים', meals: 'ארוחות', start: 'תחילת יום', backup: 'גיבוי', updates: 'עדכונים', calendar: 'פיד לקריאה בלבד', gcal: 'Google Calendar', ai: 'AI תזונה',
+  home: 'הגדרות', profile: 'פרופיל', targets: 'יעדי תזונה', week: 'שבוע ואימונים', meals: 'ארוחות', start: 'תחילת יום', backup: 'גיבוי', updates: 'עדכונים', calendar: 'פיד לקריאה בלבד', gcal: 'Google Calendar', ai: 'AI תזונה', aimodels: 'מודלים וחשיבה', aiknow: 'ידע וזיכרון',
 };
 const TARGETS: [TargetKey, string][] = [
   ['dorm-rest', 'מעונות · מנוחה'], ['dorm-train', 'מעונות · אימון'], ['home-rest', 'בית · מנוחה'], ['home-train', 'בית · אימון'],
@@ -68,6 +70,11 @@ function SettingsBody() {
   const [tokErr, setTokErr] = useState('');
   const br = bridge.use((x) => x);
   const aiS = aiState.use((x) => x);
+  const docsS = docsState.use((x) => x);
+  useEffect(() => { void loadDocs(); }, []);
+  const docRef = useRef<HTMLInputElement>(null);
+  const [memTxt, setMemTxt] = useState('');
+  const setAi = (patch: Partial<typeof set.ai>) => actions.saveSettings({ ai: { ...set.ai, ...patch } });
   const [gurl, setGurl] = useState('');
   const [gerr, setGerr] = useState('');
   const s = store.use((x) => x);
@@ -115,7 +122,7 @@ function SettingsBody() {
     <>
       <div class="hd" style={{ marginBottom: 10 }}>
         <div>
-          {page !== 'home' && <button class="back" onClick={() => setPage('home')}><ChevronRight />הגדרות</button>}
+          {page !== 'home' && <button class="back" onClick={() => setPage(page === 'aimodels' || page === 'aiknow' ? 'ai' : 'home')}><ChevronRight />{page === 'aimodels' || page === 'aiknow' ? 'AI תזונה' : 'הגדרות'}</button>}
           <div class="t">{hdr}</div>
           {page === 'home' && <div class="s">הכל ניתן לשינוי</div>}
         </div>
@@ -275,7 +282,7 @@ function SettingsBody() {
           <>
             <div class="g card">
               <div style={{ display: 'flex', justifyContent: 'space-between' }}><b>Gemini מחובר</b><span class="mu num">{maskKey(getAiKey())}</span></div>
-              <div class="mu" style={{ marginTop: 8 }}>מודל בשימוש: <b class="num" style={{ color: '#fff', direction: 'ltr', display: 'inline-block' }}>{aiS.model || '—'}</b></div>
+              <div class="mu" style={{ marginTop: 8 }}>מודל ברירת מחדל: <b class="num" style={{ color: '#fff', direction: 'ltr', display: 'inline-block' }}>{aiS.model || '—'}</b></div>
               {aiS.test && (
                 <div style={{ marginTop: 8, fontSize: 14, lineHeight: 1.5, color: aiS.test.ok ? 'var(--accent)' : 'var(--warn)' }}>
                   {aiS.test.ok ? `נבדק ועובד: ${aiS.test.model} (${aiS.test.ms} מ״ש)` : `הבדיקה נכשלה (${aiS.test.model}): ${aiS.test.msg}`}
@@ -283,25 +290,122 @@ function SettingsBody() {
                 </div>
               )}
             </div>
-            <button class="btn primary block" disabled={aiS.testing} onClick={() => void testModel()}><RefreshCw class={aiS.testing ? 'spin' : ''} /> {aiS.testing ? 'בודק…' : 'בדוק חיבור למודל'}</button>
-
-            <div class="sec"><span>מודלים זמינים במפתח שלך ({aiS.models.length})</span><button class="syncb" onClick={() => void refreshModels()}><RefreshCw />רענן</button></div>
             <div class="g rows">
-              {aiS.models.length === 0 && <div class="emp">לחץ "רענן" כדי לטעון את הרשימה</div>}
-              {aiS.models.map((id) => (
-                <button class={'opt' + (id === aiS.model ? ' on' : '')} key={id} disabled={aiS.testing} onClick={() => void testModel(id)}>
-                  <span class="num" style={{ direction: 'ltr' }}>{id}</span><span class="rd" />
-                </button>
-              ))}
+              <Row icon={<Sparkles />} title="מודלים וחשיבה" value={`חשיבה: ${THINK_LABELS[set.ai.think as Think]} · טקסט: ${set.ai.textModel || 'אוטומטי'} · תמונות/חיפוש: ${set.ai.visionModel || 'אוטומטי'}`} onClick={() => setPage('aimodels')} />
+              <Row icon={<User />} title="ידע וזיכרון" value={`${set.ai.memory.length} דברים בזיכרון · ${docsS.docs.filter((d) => d.enabled).length} מסמכים כלולים · אינטרנט: ${set.ai.web ? 'פעיל כברירת מחדל' : 'לפי בקשה'}`} onClick={() => setPage('aiknow')} />
             </div>
-            <div class="note">{aiS.pinned ? 'נעלת מודל מסוים: הוא ישמש לכל הבקשות. ' : 'מצב אוטומטי: מודל מהיר לטקסט, ומודל חזק יותר לתמונות ותוויות. '}לחיצה על מודל ברשימה בודקת אותו ונועלת אותו.</div>
-            {aiS.pinned && <button class="btn block" style={{ marginTop: 8 }} onClick={() => { unpinModel(); toast('חזרת למצב אוטומטי'); }}>חזור למצב אוטומטי</button>}
-            <div class="note">לפי התיעוד של Google, במסלול החינמי ייתכן שתוכן שנשלח משמש לשיפור המוצרים שלהם. אם חשוב לך, אפשר להפעיל חיוב ב-Google AI Studio.</div>
-
-            <button class="btn block" style={{ marginTop: 14 }} onClick={() => { setUi({ settingsOpen: false, aiOpen: true }); }}><Sparkles /> פתח שיחה עם ה-AI</button>
+            <button class="btn primary block" style={{ marginTop: 14 }} disabled={aiS.testing} onClick={() => void testModel()}><RefreshCw class={aiS.testing ? 'spin' : ''} /> {aiS.testing ? 'בודק…' : 'בדוק חיבור למודל'}</button>
+            <button class="btn block" style={{ marginTop: 10 }} onClick={() => { setUi({ settingsOpen: false, aiOpen: true }); }}><Sparkles /> פתח שיחה עם ה-AI</button>
             <button class="btn danger block" style={{ marginTop: 10 }} onClick={() => { if (confirm('לנתק את Gemini? המפתח יימחק מהטלפון.')) { clearAiKey(); toast('נותק'); } }}>נתק</button>
           </>
         ) : <AiSetup onDone={() => toast('Gemini מחובר')} />)}
+
+        {page === 'aimodels' && (() => {
+          const pick = (role: 'textModel' | 'visionModel', v: string) => setAi({ [role]: v } as Partial<typeof set.ai>);
+          const cur = (role: 'textModel' | 'visionModel') => set.ai[role];
+          const eff = (role: 'textModel' | 'visionModel') => cur(role) || (role === 'textModel' ? 'gemini-3.5-flash-lite' : 'gemini-3.6-flash');
+          const levels: Think[] = ['auto', 'minimal', 'low', 'medium', 'high', 'xhigh'];
+          const ModelList = ({ role }: { role: 'textModel' | 'visionModel' }) => (
+            <div class="g rows">
+              <button class={'opt' + (!cur(role) ? ' on' : '')} onClick={() => pick(role, '')}>
+                <span>אוטומטי<small class="mu" style={{ display: 'block', fontSize: 13 }}>{role === 'textModel' ? 'המהיר ביותר שזמין (מומלץ)' : 'מודל חזק יותר שזמין (מומלץ)'}</small></span><span class="rd" />
+              </button>
+              {aiS.models.map((id) => (
+                <button class={'opt' + (cur(role) === id ? ' on' : '')} key={id} onClick={() => pick(role, id)}>
+                  <span><span class="num" style={{ direction: 'ltr', display: 'inline-block' }}>{id}</span>{modelHint(id) && <small class="mu" style={{ display: 'block', fontSize: 13 }}>{modelHint(id)}</small>}</span><span class="rd" />
+                </button>
+              ))}
+              {aiS.models.length === 0 && <div class="emp">אין רשימת מודלים. לחץ "רענן רשימה" למטה.</div>}
+            </div>
+          );
+          return (
+            <>
+              <div class="sec"><span>רמת חשיבה</span></div>
+              <div class="grid2" style={{ gridTemplateColumns: 'repeat(3,1fr)' }}>
+                {levels.map((l) => <button class={'chip' + (set.ai.think === l ? ' on' : '')} onClick={() => setAi({ think: l })}>{THINK_LABELS[l]}</button>)}
+              </div>
+              <div class="g card" style={{ fontSize: 13 }}>
+                <div class="mu" style={{ lineHeight: 1.7 }}>
+                  חשיבה גבוהה נותנת תשובות עמוקות יותר אבל איטיות בהרבה. "אוטומטי" הוא הכי מהיר שהמודל מאפשר. בצ'אט יש גם כפתור "חשיבה עמוקה" שמפעיל רמה גבוהה להודעה אחת.
+                </div>
+                <div class="mu num" style={{ marginTop: 8, direction: 'ltr', textAlign: 'right' }}>
+                  {[eff('textModel'), eff('visionModel')].map((m) => `${m}: ${resolveThinking(m, set.ai.think as Think) ?? 'ללא הגדרה'} (${allowedLevels(m).join('/') || 'לא ידוע'})`).join('  |  ')}
+                </div>
+              </div>
+
+              <div class="sec"><span>מודל לטקסט (מהיר)</span></div>
+              <ModelList role="textModel" />
+              <div class="sec"><span>מודל לתמונות, מסמכים, חיפוש וחשיבה עמוקה</span></div>
+              <ModelList role="visionModel" />
+
+              <div style={{ display: 'flex', gap: 10, marginTop: 14 }}>
+                <button class="btn" style={{ flex: 1 }} onClick={() => void refreshModels()}><RefreshCw /> רענן רשימה</button>
+                <button class="btn" style={{ flex: 1 }} disabled={aiS.testing} onClick={() => void testModel(eff('textModel'))}><RefreshCw class={aiS.testing ? 'spin' : ''} /> בדוק את מודל הטקסט</button>
+              </div>
+              {aiS.test && <div class="note" style={{ color: aiS.test.ok ? 'var(--accent)' : 'var(--warn)' }}>{aiS.test.ok ? `${aiS.test.model} עובד (${aiS.test.ms} מ״ש)` : `${aiS.test.model}: ${aiS.test.msg}`}</div>}
+              <div class="note">אם מודל שבחרת לא עונה, האפליקציה עוברת לבד לחלופה ומציגה בכל תשובה איזה מודל ענה.</div>
+            </>
+          );
+        })()}
+
+        {page === 'aiknow' && (
+          <>
+            <div class="g rows">
+              <button class="row2" onClick={() => setAi({ web: !set.ai.web })}>
+                <span>חיפוש באינטרנט כברירת מחדל<small>מחקרים, מקורות רפואיים ומידע עדכני. איטי יותר ובלי פלט מובנה. אפשר גם להפעיל בצ'אט להודעה אחת.</small></span>
+                <span class={'tgl' + (set.ai.web ? ' on' : '')} />
+              </button>
+              <button class="row2" onClick={() => setAi({ shareData: !set.ai.shareData })}>
+                <span>שיתוף נתוני האפליקציה עם ה-AI<small>פרופיל, יעדים, 14 ימים אחרונים, משקל ואימונים. כך הוא יכול לנתח התקדמות.</small></span>
+                <span class={'tgl' + (set.ai.shareData ? ' on' : '')} />
+              </button>
+            </div>
+
+            <div class="sec"><span>מה ה-AI זכר עליי ({set.ai.memory.length})</span></div>
+            <div class="g card" style={{ padding: 0 }}>
+              {set.ai.memory.length === 0 && <div class="emp">עוד לא נשמר כלום. ה-AI שומר רק דברים קבועים שסיפרת לו, ואפשר גם להוסיף ידנית.</div>}
+              {set.ai.memory.map((m, i) => (
+                <div class="stp" key={i} style={{ minHeight: 52, alignItems: 'center' }}>
+                  <span style={{ flex: 1, fontSize: 15, lineHeight: 1.4 }}>{m}</span>
+                  <button class="aix" aria-label="מחק" onClick={() => setAi({ memory: set.ai.memory.filter((_, j) => j !== i) })}><X /></button>
+                </div>
+              ))}
+              <div style={{ display: 'flex', gap: 8, padding: 12 }}>
+                <input class="inp" style={{ flex: 1 }} value={memTxt} placeholder="הוסף דבר לזיכרון…" onInput={(e) => setMemTxt(nv(e))} />
+                <button class="btn primary" style={{ padding: '0 18px' }} onClick={() => { const t = memTxt.trim(); if (!t) return; setAi({ memory: [...set.ai.memory, t.slice(0, 140)].slice(-60) }); setMemTxt(''); }}>הוסף</button>
+              </div>
+            </div>
+
+            <div class="sec"><span>ספריית מסמכים ({docsS.docs.length})</span></div>
+            <div class="g card" style={{ padding: 0 }}>
+              {docsS.docs.length === 0 && <div class="emp">אפשר להוסיף כאן בדיקות דם, סיכומים רפואיים, תוכנית אימון או מאמרים (PDF, תמונה או טקסט). מסמך שסימנת כ"כלול" נשלח ל-AI בכל שיחה.</div>}
+              {docsS.docs.map((d) => (
+                <div class="stp" key={d.id} style={{ minHeight: 60 }}>
+                  <button style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, minWidth: 0, textAlign: 'right' }} onClick={() => void toggleDoc(d.id, !d.enabled)}>
+                    <span class={'tgl' + (d.enabled ? ' on' : '')} style={{ flex: 'none' }} />
+                    <span style={{ minWidth: 0 }}>
+                      <span style={{ display: 'block', fontSize: 15, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.name}</span>
+                      <small class="mu num">{(d.size / 1024 / 1024).toFixed(1)} MB · {d.enabled ? 'כלול' : 'לא כלול'}</small>
+                    </span>
+                  </button>
+                  <button class="aix" aria-label="מחק מסמך" onClick={() => { if (confirm('למחוק את המסמך מהספרייה?')) void removeDoc(d.id); }}><X /></button>
+                </div>
+              ))}
+              <div style={{ padding: 12 }}>
+                <button class="btn block" onClick={() => docRef.current?.click()}><Upload /> הוסף מסמך</button>
+                <input ref={docRef} type="file" accept="application/pdf,image/*,text/plain,text/markdown,.md,.txt" style={{ display: 'none' }} onChange={async (e) => {
+                  const f = (e.target as HTMLInputElement).files?.[0];
+                  (e.target as HTMLInputElement).value = '';
+                  if (!f) return;
+                  if (!confirm('שים לב: מסמך שכלול נשלח ל-Google בכל שיחה עם ה-AI. לפי התיעוד של Google, במסלול החינמי ייתכן שתוכן שנשלח משמש לשיפור המוצרים שלהם. מסמכים רפואיים הם מידע רגיש. להוסיף?')) return;
+                  const r = await addDoc(f);
+                  toast(r.ok ? 'המסמך נוסף' : (r.msg ?? 'ההוספה נכשלה'));
+                }} />
+              </div>
+            </div>
+            <div class="note">המסמכים נשמרים רק בטלפון הזה ולא נכנסים לגיבוי. ה-AI אינו רופא: הוא יכול להסביר ממצאים כלליים, אבל כל ערך חריג צריך לעבור לרופא.</div>
+          </>
+        )}
 
         {page === 'gcal' && (() => {
           const ago = (t?: number) => { if (!t) return 'עוד לא'; const m = Math.max(0, Math.round((Date.now() - t) / 60000)); return m === 0 ? 'הרגע' : `לפני ${m} דק׳`; };
