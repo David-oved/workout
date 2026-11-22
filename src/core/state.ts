@@ -40,6 +40,9 @@ export function defaultState(): State {
     workouts: [],
     weights: [{ date: todayKey(0), kg: settings.profile.weightKg }],
     favorites: [],
+    dishes: [],
+    foodEdits: {},
+    customFoods: [],
     meta: { createdAt: Date.now() },
   };
 }
@@ -67,6 +70,9 @@ function migrate(raw: any): State {
     ...base,
     ...raw,
     settings: { ...base.settings, ...raw.settings, ai: { ...base.settings.ai, ...(raw.settings?.ai ?? {}) }, cal: { ...base.settings.cal, ...(raw.settings?.cal ?? {}) } },
+    dishes: Array.isArray(raw.dishes) ? raw.dishes : [],
+    foodEdits: raw.foodEdits && typeof raw.foodEdits === 'object' ? raw.foodEdits : {},
+    customFoods: Array.isArray(raw.customFoods) ? raw.customFoods : [],
     meta: { ...base.meta, ...(raw.meta ?? {}) },
     schema: SCHEMA,
   };

@@ -4,6 +4,19 @@ export type TargetKey = 'dorm-rest' | 'dorm-train' | 'home-rest' | 'home-train';
 
 export interface Slot { id: string; name: string; time: string }
 
+/** רכיב בתוך ארוחה: כמות ב-g (ערכים ל-100 ג׳) או במנות (ערכים למנה אחת) */
+export interface Part {
+  id: string;
+  name: string;
+  unit: 'g' | 'p';
+  amount: number;
+  base: number; // 100 לגרמים, 1 למנות
+  per: Macros; // לפי base
+  est?: boolean;
+  foodId?: string;
+  sub?: Part[]; // רכיבים גולמיים שנכנסו לחלק הזה (כשאוכלים מנה מסיר)
+}
+
 export interface Entry extends Macros {
   id: string;
   date: string; // YYYY-MM-DD
@@ -11,6 +24,8 @@ export interface Entry extends Macros {
   name: string;
   est?: boolean; // הערכה ולא מדידה מדויקת
   ts: number;
+  parts?: Part[]; // ארוחה מורכבת: מה שבפנים
+  dishId?: string; // אם נאכל מסיר שמור
 }
 
 export interface Food extends Macros {
@@ -18,7 +33,26 @@ export interface Food extends Macros {
   name: string;
   unit?: string;
   est?: boolean;
+  parts?: Part[];
 }
+
+/** סיר/מתכון שמור: מצרכים גולמיים, משקל אחרי בישול ואחוז שומן שנשפך */
+export interface Dish {
+  id: string;
+  name: string;
+  parts: Part[];
+  cookedG: number;
+  measured: boolean; // המשקל נשקל בפועל (ולא הערכה)
+  fatLoss: number; // 0..0.5, חלק מהשומן שנשפך בבישול
+  remainG?: number; // כמה נשאר בסיר
+  createdAt: number;
+  last?: number;
+}
+
+export interface FoodEdit { k: number; p: number; c: number; f: number; name?: string }
+export interface Portion { l: string; g: number }
+/** מזון אישי שהוספת בעצמך (לכל 100 ג׳ או למנה) */
+export interface CustomFood { id: string; name: string; unit: 'g' | 'p'; per: Macros; portions?: Portion[] }
 
 export type WorkoutStatus = 'planned' | 'done' | 'skipped';
 export interface Workout {
@@ -62,5 +96,8 @@ export interface State {
   workouts: Workout[];
   weights: Weigh[];
   favorites: Food[];
+  dishes: Dish[];
+  foodEdits: Record<string, FoodEdit>;
+  customFoods: CustomFood[];
   meta: { createdAt: number; lastBackup?: number };
 }

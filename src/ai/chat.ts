@@ -244,6 +244,10 @@ function patchMsg(id: string, fn: (m: Msg) => Msg) {
 export const setGrams = (msgId: string, itemId: string, grams: number) =>
   patchMsg(msgId, (m) => ({ ...m, edited: true, items: m.items?.map((i) => (i.id === itemId ? { ...i, grams: Math.max(1, Math.round(grams)) } : i)) }));
 
+/** המשתמש מתקן ערכי תזונה של פריט בכרטיס (ל-100 ג׳) */
+export const setPer = (msgId: string, itemId: string, per: { k: number; p: number; c: number; f: number }) =>
+  patchMsg(msgId, (m) => ({ ...m, edited: true, items: m.items?.map((i) => (i.id === itemId ? { ...i, kcal100: per.k, p100: per.p, c100: per.c, f100: per.f, source: 'label' as const } : i)) }));
+
 export const removeItem = (msgId: string, itemId: string) =>
   patchMsg(msgId, (m) => ({ ...m, edited: true, items: m.items?.filter((i) => i.id !== itemId) }));
 

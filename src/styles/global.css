@@ -467,3 +467,52 @@ select.inp{background-image:none}
 .as-emp{text-align:center;color:var(--mu2);font-size:14px;padding:4px 0}
 .as-back{display:inline-flex;align-items:center;gap:6px;color:var(--accent);font-size:14px;margin:0 4px 10px}
 .as-opts{display:flex;gap:8px;margin:0 0 10px}
+
+/* ===== ארוחה מורכבת, מאגר מזון, סיר ===== */
+.fp-in{display:flex;align-items:center;gap:8px;height:46px;border-radius:23px;padding:0 14px;background:rgba(255,255,255,.07);border:.5px solid rgba(255,255,255,.12)}
+.fp-in svg{width:18px;height:18px;color:var(--mu);flex:none}
+.fp-in input{flex:1;min-width:0;background:none;border:0;outline:none;font-size:16px;height:44px;text-align:right}
+.fp-full{display:block;margin-top:2px;opacity:.75;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+.amt{display:inline-flex;align-items:center;gap:6px;height:40px;padding:0 12px;border-radius:20px;background:rgba(255,255,255,.08);border:.5px solid rgba(255,255,255,.14)}
+.amt input{width:64px;background:none;border:0;outline:none;font-size:17px;font-weight:600;text-align:center;min-width:0}
+.amt.wide input{width:84px}
+.amt small{font-size:12px;color:var(--mu)}
+.as-mh{display:flex;align-items:center;gap:8px;margin:0 2px 8px}
+.as-mn{flex:1;min-width:0;height:36px;border-radius:18px;padding:0 12px;background:rgba(255,255,255,.07);border:.5px solid rgba(255,255,255,.12);font-size:14px;outline:none;text-align:right;display:flex;align-items:center}
+.as-seg{display:inline-flex;flex:none;padding:3px;border-radius:18px;background:rgba(255,255,255,.07)}
+.as-seg button{height:30px;padding:0 10px;border-radius:15px;font-size:12.5px;color:var(--mu);transition:background .25s,color .25s}
+.as-seg button.on{background:var(--accent);color:var(--accent-d);font-weight:600}
+.as-tr{max-height:min(300px,38vh)}
+.as-det{margin-top:8px;display:flex;flex-direction:column;gap:10px}
+.as-amt{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.as-mac{display:flex;gap:10px;font-size:13px}
+.as-mac i{font-style:normal}
+.as-pc{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none}
+.as-pc::-webkit-scrollbar{display:none}
+.as-pc .chip{flex:none;height:34px;font-size:13px}
+.as-acts{display:flex;gap:8px}
+.as-acts button{flex:1;height:36px;border-radius:18px;background:rgba(255,255,255,.07);border:.5px solid rgba(255,255,255,.1);font-size:13px;display:inline-flex;align-items:center;justify-content:center;gap:6px;color:rgba(255,255,255,.8)}
+.as-acts button svg{width:14px;height:14px}
+.as-src{display:flex;align-items:flex-start;gap:6px;font-size:11.5px;color:var(--mu2);line-height:1.4}
+.as-src svg{width:13px;height:13px;flex:none;margin-top:1px}
+.as-row.pot{cursor:default}
+.as-row.pot small{display:block;margin-top:2px}
+.pot-eat{flex:none;height:36px;padding:0 14px;border-radius:18px;background:var(--accent);color:var(--accent-d);font-size:14px;font-weight:600;display:inline-flex;align-items:center;gap:6px}
+.pot-eat svg{width:15px;height:15px}
+.pot-ing{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:.5px solid var(--line)}
+.pot-ing .nm{flex:1;min-width:0;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pot-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.pot-res{margin-top:16px;padding:14px 16px;border-radius:22px}
+.pot-res .pr-h{font-size:12px;color:var(--mu);margin-bottom:4px}
+.pot-res .pr-b{font-size:16px}
+.pot-res .pr-b b{font-size:26px;font-weight:600}
+.pot-res .pr-s{margin-top:6px;font-size:12.5px;color:var(--mu)}
+.ent2 .esub{display:block;font-size:12px;color:var(--mu);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ent2 .ech{width:16px;height:16px;color:var(--mu2);flex:none}
+.parts-l{margin-top:10px;display:flex;flex-direction:column;gap:2px}
+.part-r{display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:.5px solid var(--line)}
+.part-r .pn{flex:1;min-width:0}
+.part-r .pn b{display:block;font-size:15px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.part-r .pn small{font-size:12px;color:var(--mu)}
+.part-r .pk{font-size:13px;color:var(--mu);min-width:40px;text-align:left}
+.sub-l{margin:2px 0 6px;padding:0 4px;font-size:12px;color:var(--mu2);line-height:1.6}

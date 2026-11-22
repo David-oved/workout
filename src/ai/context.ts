@@ -1,6 +1,8 @@
 import { store } from '../core/state';
 import { dayInfo } from '../core/calc';
 import { DAY_NAMES, addDays, dow, todayKey } from '../core/dates';
+import { dishPer100 } from '../core/meal';
+import { getFood } from '../data/foodDb';
 
 /**
  * בונה את בלוק "נתוני האפליקציה" שנשלח ל-AI עם ההודעה האחרונה: פרופיל, יעדים, 14 הימים האחרונים,
@@ -41,6 +43,20 @@ export function buildAppData(date: string): string {
       .filter((x) => x.date >= today && x.date <= addDays(today, 7) && x.status !== 'skipped')
       .map((x) => `${DAY_NAMES[dow(x.date)]} ${x.time} ${x.title}`);
     out.push(`workouts last 14 days: ${done} done, ${skipped} skipped, ${past.length - done - skipped} not marked. Next 7 days: ${upcoming.join('; ') || 'none'}.`);
+  }
+
+  if (ai.shareData) {
+    const foods: string[] = [];
+    for (const d of s.dishes.slice(0, 8)) {
+      const p = dishPer100(d);
+      foods.push(`pot "${d.name}": per 100g cooked ${Math.round(p.k)} kcal, protein ${Math.round(p.p * 10) / 10}g, carbs ${Math.round(p.c * 10) / 10}g, fat ${Math.round(p.f * 10) / 10}g; ingredients: ${d.parts.map((x) => `${x.name} ${Math.round(x.amount)}${x.unit === 'g' ? 'g' : ''}`).join(', ')}; cooked weight ${d.cookedG}g${d.remainG != null ? `, remaining ${Math.round(d.remainG)}g` : ''}`);
+    }
+    for (const c of s.customFoods.slice(0, 15)) foods.push(`custom food "${c.name}": ${c.unit === 'g' ? 'per 100g' : 'per serving'} ${Math.round(c.per.k)} kcal, protein ${c.per.p}g, carbs ${c.per.c}g, fat ${c.per.f}g`);
+    for (const [id, e] of Object.entries(s.foodEdits).slice(0, 15)) {
+      const r = getFood(id, s);
+      if (r) foods.push(`user-corrected values for "${r.name}": per 100g ${e.k} kcal, protein ${e.p}g, carbs ${e.c}g, fat ${e.f}g`);
+    }
+    if (foods.length) { out.push('[USER FOODS]'); foods.forEach((x) => out.push('- ' + x)); }
   }
 
   if (ai.memory.length) {

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
-import { Trash, Copy, Star } from 'lucide-preact';
+import { Trash, Copy, Star, X, Plus } from 'lucide-preact';
 import { store } from '../core/state';
 import { actions } from '../core/actions';
 import { ui, setUi, toast } from '../ui/ui';
@@ -7,7 +7,13 @@ import { Sheet } from '../ui/components';
 import { bridge } from '../core/bridge';
 import { conflictsFor, hhmm, suggestSlot } from '../core/conflicts';
 import { DAY_NAMES, dow } from '../core/dates';
-import type { Entry, WorkoutStatus } from '../core/types';
+import { fmt } from '../core/calc';
+import { autoMealName, dishSub, label, partMacros, sumParts } from '../core/meal';
+import { uid } from '../core/dates';
+import { defaultPortion } from '../ui/tray';
+import type { FoodRec } from '../data/foodDb';
+import { AmtInput, FoodPicker } from './FoodPicker';
+import type { Entry, Part, WorkoutStatus } from '../core/types';
 
 const num = (v: string) => (v === '' ? 0 : Number(v) || 0);
 
@@ -18,14 +24,44 @@ export function EditEntrySheet() {
   if (id) lastId.current = id;
   const entry = s.entries.find((e) => e.id === (id ?? lastId.current));
   const [f, setF] = useState({ name: '', k: '', p: '', c: '', f: '', slot: '' });
+  const [ps, setPs] = useState<Part[]>([]);
+  const [adding, setAdding] = useState(false);
+  const hasParts = !!entry?.parts?.length;
   useEffect(() => {
-    if (id && entry) setF({ name: entry.name, k: String(entry.k), p: String(entry.p), c: String(entry.c), f: String(entry.f), slot: entry.slot });
+    if (id && entry) {
+      setF({ name: entry.name, k: String(entry.k), p: String(entry.p), c: String(entry.c), f: String(entry.f), slot: entry.slot });
+      setPs(entry.parts ?? []);
+      setAdding(false);
+    }
   }, [id]);
   const close = () => setUi({ editEntry: null });
   const fav = entry ? s.favorites.some((x) => x.name === entry.name) : false;
+  const tot = sumParts(ps);
+
+  const setAmt = (pid: string, n: number) =>
+    setPs((l) => l.map((p) => {
+      if (p.id !== pid) return p;
+      const d = p.foodId?.startsWith('d:') ? store.get().dishes.find((x) => x.id === p.foodId!.slice(2)) : undefined;
+      return { ...p, amount: n, sub: d ? dishSub(d, n) : p.sub };
+    }));
+  const addFood = (r: FoodRec) => {
+    setPs((l) => [...l, { id: uid(), name: r.name, unit: r.unit, amount: r.unit === 'g' ? defaultPortion(r.portions) : 1, base: r.base, per: r.per, est: r.est, foodId: r.id }]);
+    setAdding(false);
+  };
 
   const save = () => {
     if (!entry) return;
+    if (hasParts) {
+      if (!ps.length) { toast('אין רכיבים. אפשר למחוק את הארוחה'); return; }
+      const m = sumParts(ps);
+      const was = entry.name;
+      // שם שנשאר אוטומטי מתעדכן ברכיבים החדשים; שם שהמשתמש בחר נשאר
+      const auto = entry.parts && autoMealName(entry.parts) === was;
+      const name = f.name.trim() && f.name.trim() !== was ? f.name.trim() : auto && ps.length > 1 ? autoMealName(ps) : was;
+      actions.updateEntry(entry.id, { name, ...m, parts: ps, slot: f.slot, est: ps.some((p) => p.est) });
+      close();
+      return;
+    }
     if (!num(f.k)) return;
     actions.updateEntry(entry.id, { name: f.name.trim() || entry.name, k: num(f.k), p: num(f.p), c: num(f.c), f: num(f.f), slot: f.slot, est: false });
     close();
@@ -39,7 +75,7 @@ export function EditEntrySheet() {
   };
   const dup = () => {
     if (!entry) return;
-    actions.addEntry({ date: entry.date, slot: entry.slot, name: entry.name, k: entry.k, p: entry.p, c: entry.c, f: entry.f, est: entry.est });
+    actions.addEntry({ date: entry.date, slot: entry.slot, name: entry.name, k: entry.k, p: entry.p, c: entry.c, f: entry.f, est: entry.est, parts: entry.parts, dishId: entry.dishId });
     close();
     toast('המנה שוכפלה');
   };
@@ -49,21 +85,54 @@ export function EditEntrySheet() {
       {entry && (
         <div>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <h3>עריכת מנה</h3>
-            <button class={'star' + (fav ? ' on' : '')} aria-label="מועדף" onClick={() => actions.toggleFavorite({ name: entry.name, k: entry.k, p: entry.p, c: entry.c, f: entry.f, est: entry.est })}>
+            <h3>{hasParts && entry.parts!.length > 1 ? 'ארוחה' : 'עריכת מנה'}</h3>
+            <button class={'star' + (fav ? ' on' : '')} aria-label="מועדף" onClick={() => actions.toggleFavorite({ name: entry.name, k: entry.k, p: entry.p, c: entry.c, f: entry.f, est: entry.est, parts: entry.parts })}>
               <Star fill={fav ? 'currentColor' : 'none'} />
             </button>
           </div>
           <div class="chips" style={{ marginTop: 8 }}>
             {s.settings.slots.map((sl) => <button class={'chip' + (sl.id === f.slot ? ' on' : '')} onClick={() => setF({ ...f, slot: sl.id })}>{sl.name}</button>)}
           </div>
-          <div class="field">
-            <div class="full"><label class="lbl">שם</label><input class="inp" value={f.name} onInput={(e) => setF({ ...f, name: (e.target as HTMLInputElement).value })} /></div>
-            <div><label class="lbl">קלוריות</label><input class="inp num" inputMode="numeric" value={f.k} onInput={(e) => setF({ ...f, k: (e.target as HTMLInputElement).value })} /></div>
-            <div><label class="lbl">חלבון (ג׳)</label><input class="inp num" inputMode="numeric" value={f.p} onInput={(e) => setF({ ...f, p: (e.target as HTMLInputElement).value })} /></div>
-            <div><label class="lbl">פחמימה (ג׳)</label><input class="inp num" inputMode="numeric" value={f.c} onInput={(e) => setF({ ...f, c: (e.target as HTMLInputElement).value })} /></div>
-            <div><label class="lbl">שומן (ג׳)</label><input class="inp num" inputMode="numeric" value={f.f} onInput={(e) => setF({ ...f, f: (e.target as HTMLInputElement).value })} /></div>
-          </div>
+          {hasParts ? (
+            <>
+              <div class="field" style={{ marginBottom: 0 }}>
+                <div class="full"><label class="lbl">שם</label><input class="inp" value={f.name} onInput={(e) => setF({ ...f, name: (e.target as HTMLInputElement).value })} /></div>
+              </div>
+              <div class="as-lbl" style={{ marginTop: 14 }}>
+                <span>מה בפנים</span>
+                <span class="num">{fmt(tot.k)} קל׳ · {tot.p} ח׳ · {tot.c} פ׳ · {tot.f} ש׳</span>
+              </div>
+              <div class="parts-l">
+                {ps.map((p) => {
+                  const m = partMacros(p);
+                  return (
+                    <div key={p.id}>
+                      <div class="part-r">
+                        <div class="pn"><b>{p.name}</b><small class="num">{m.p} ח׳ · {m.c} פ׳ · {m.f} ש׳</small></div>
+                        <AmtInput value={p.amount} onChange={(n) => setAmt(p.id, n)} suffix={p.unit === 'g' ? 'ג׳' : 'מנות'} />
+                        <span class="pk num">{m.k}</span>
+                        <button class="as-rm" aria-label="הסר" onClick={() => setPs((l) => l.filter((x) => x.id !== p.id))}><X /></button>
+                      </div>
+                      {p.sub && p.sub.length > 0 && (
+                        <div class="sub-l">מהמצרכים: {p.sub.map((x) => `${label(x.name)} ${Math.round(x.amount)} ג׳`).join(' · ')}</div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+              {adding ? <div style={{ marginTop: 10 }}><FoodPicker autoFocus onPick={addFood} placeholder="הוסף רכיב…" /></div> : (
+                <button class="btn block" style={{ marginTop: 10 }} onClick={() => setAdding(true)}><Plus />הוסף רכיב</button>
+              )}
+            </>
+          ) : (
+            <div class="field">
+              <div class="full"><label class="lbl">שם</label><input class="inp" value={f.name} onInput={(e) => setF({ ...f, name: (e.target as HTMLInputElement).value })} /></div>
+              <div><label class="lbl">קלוריות</label><input class="inp num" inputMode="numeric" value={f.k} onInput={(e) => setF({ ...f, k: (e.target as HTMLInputElement).value })} /></div>
+              <div><label class="lbl">חלבון (ג׳)</label><input class="inp num" inputMode="numeric" value={f.p} onInput={(e) => setF({ ...f, p: (e.target as HTMLInputElement).value })} /></div>
+              <div><label class="lbl">פחמימה (ג׳)</label><input class="inp num" inputMode="numeric" value={f.c} onInput={(e) => setF({ ...f, c: (e.target as HTMLInputElement).value })} /></div>
+              <div><label class="lbl">שומן (ג׳)</label><input class="inp num" inputMode="numeric" value={f.f} onInput={(e) => setF({ ...f, f: (e.target as HTMLInputElement).value })} /></div>
+            </div>
+          )}
           <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
             <button class="btn primary" style={{ flex: 1 }} onClick={save}>שמור</button>
             <button class="btn" onClick={dup} aria-label="שכפל"><Copy /></button>

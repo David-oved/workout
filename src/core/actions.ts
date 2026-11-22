@@ -1,5 +1,5 @@
 import { update } from './state';
-import type { Entry, Food, Routine, Settings, Workout, WorkoutStatus } from './types';
+import type { Dish, Entry, Food, FoodEdit, CustomFood, Routine, Settings, Workout, WorkoutStatus } from './types';
 import { addDays, todayKey, uid } from './dates';
 import { ensureWorkouts } from './state';
 
@@ -35,6 +35,29 @@ export const actions = {
   },
   removeEntries(ids: string[]) {
     update((s) => ({ ...s, entries: s.entries.filter((e) => !ids.includes(e.id)) }));
+  },
+
+  saveDish(d: Dish) {
+    update((s) => ({ ...s, dishes: s.dishes.some((x) => x.id === d.id) ? s.dishes.map((x) => (x.id === d.id ? d : x)) : [d, ...s.dishes] }));
+  },
+  patchDish(id: string, patch: Partial<Dish>) {
+    update((s) => ({ ...s, dishes: s.dishes.map((x) => (x.id === id ? { ...x, ...patch } : x)) }));
+  },
+  deleteDish(id: string) {
+    update((s) => ({ ...s, dishes: s.dishes.filter((x) => x.id !== id) }));
+  },
+  setFoodEdit(id: string, e: FoodEdit | null) {
+    update((s) => {
+      const next = { ...s.foodEdits };
+      if (e) next[id] = e; else delete next[id];
+      return { ...s, foodEdits: next };
+    });
+  },
+  saveCustomFood(f: CustomFood) {
+    update((s) => ({ ...s, customFoods: s.customFoods.some((x) => x.id === f.id) ? s.customFoods.map((x) => (x.id === f.id ? f : x)) : [f, ...s.customFoods] }));
+  },
+  deleteCustomFood(id: string) {
+    update((s) => ({ ...s, customFoods: s.customFoods.filter((x) => x.id !== id) }));
   },
 
   toggleFavorite(food: Omit<Food, 'id'> & { id?: string }) {

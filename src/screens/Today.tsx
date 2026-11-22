@@ -8,6 +8,7 @@ import { dayInfo, fmt } from '../core/calc';
 import { DAY_NAMES, addDays, dayLabel, dayMonth, dow, todayKey } from '../core/dates';
 import { ui, setUi, openAdd, toast } from '../ui/ui';
 import { Ring } from '../ui/components';
+import { label } from '../core/meal';
 import type { Workout } from '../core/types';
 
 const MACROS = [
@@ -87,6 +88,7 @@ export function TodayScreen() {
                 <span class="eic"><Utensils /></span>
                 <span class="etx">
                   <b>{e.name}{e.est && <i class="etag">הערכה</i>}</b>
+                  {e.parts && e.parts.length > 1 && <span class="esub">{e.parts.map((p) => label(p.name)).join(' · ')}</span>}
                   <span class="emac num"><i class="mp">{e.p} ח׳</i><i class="mc2">{e.c} פ׳</i><i class="mf">{e.f} ש׳</i></span>
                 </span>
                 <span class="ekc num"><b>{fmt(e.k)}</b><small>קל׳</small></span>
