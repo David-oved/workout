@@ -86,12 +86,22 @@ export function foodPortions(foodId?: string): Portion[] | undefined {
   return getFood(foodId, store.get())?.portions;
 }
 
+/** הכמות האחרונה שאכלת ממזון מסוים (כדי שהפעם הבאה תהיה לחיצה אחת) */
+export function lastAmount(foodId: string): number | undefined {
+  const es = store.get().entries;
+  for (let i = es.length - 1; i >= 0; i--) {
+    const p = es[i].parts?.find((x) => x.foodId === foodId);
+    if (p && p.unit === 'g') return p.amount;
+  }
+  return undefined;
+}
+
 export const defaultPortion = (ps: Portion[]) => (ps.find((p) => !p.l.startsWith('כף')) ?? ps[ps.length - 1])?.g ?? 100;
 
 export const portionOfDish = (d: Dish) => Math.min(Math.round(d.cookedG / 10) * 10 || 250, 300);
 
 export function trayAddFood(f: FoodRec, grams?: number) {
-  const amount = grams ?? (f.unit === 'g' ? defaultPortion(f.portions) : 1);
+  const amount = grams ?? (f.unit === 'g' ? lastAmount(f.id) ?? defaultPortion(f.portions) : 1);
   pushItem({ name: f.name, unit: f.unit, amount, base: f.base, per: f.per, est: f.est, foodId: f.id, portions: f.portions });
 }
 
@@ -215,7 +225,7 @@ export function buildCandidates(slot: string): Cand[] {
   const FOOD_STARTERS = ['il:1561', 'il:805', 'il:2721', 'il:2062', 'il:10076', 'il:9707', 'il:500', 'il:1955', 'il:1858', 'il:8608', 'il:3663', 'il:3793', 'il:3223', 'il:15', 'il:2730', 'il:4443'];
   FOOD_STARTERS.forEach((id, i) => {
     const r = getFood(id, s);
-    if (r) upsert({ key: r.id, kind: 'food', name: r.name, unit: r.unit, base: r.base, per: r.per, amount: defaultPortion(r.portions), est: r.est, w: 0.5 - i * 0.02, foodId: r.id, portions: r.portions });
+    if (r) upsert({ key: r.id, kind: 'food', name: r.name, unit: r.unit, base: r.base, per: r.per, amount: lastAmount(r.id) ?? defaultPortion(r.portions), est: r.est, w: 0.5 - i * 0.02, foodId: r.id, portions: r.portions });
   });
   return [...map.values()];
 }

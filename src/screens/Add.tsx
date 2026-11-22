@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
-import { X, Plus, Minus, Sparkles, Camera, Paperclip, ArrowUp, ChevronDown, Star, Globe, Brain, ChevronRight, Pencil, Info, MessageSquarePlus, Utensils, History, PencilLine } from 'lucide-preact';
+import { Check, HelpCircle, X, Plus, Minus, Sparkles, Camera, Paperclip, ArrowUp, ChevronDown, Star, Globe, Brain, ChevronRight, Pencil, Info, MessageSquarePlus, Utensils, History, PencilLine } from 'lucide-preact';
 import { store } from '../core/state';
 import { actions } from '../core/actions';
 import { dayInfo, fmt } from '../core/calc';
@@ -16,6 +16,7 @@ import { buildCandidates, candMacros, defaultPortion, gapSuggestions, macrosOf, 
 import { dbState, getFood, loadDb, searchFoods, type FoodRec } from '../data/foodDb';
 import { AmtInput, FoodPicker, FoodRow } from './FoodPicker';
 import { PotSheet } from './Pot';
+import { parseMeal, parseNewProduct, type Parsed } from '../core/parse';
 
 const Kcal = ({ m }: { m: { k: number } }) => <span class="num">{m.k}</span>;
 type Tab = 'meal' | 'food' | 'pot' | 'fav';
@@ -53,6 +54,8 @@ export function AddScreen() {
   const [openRow, setOpenRow] = useState<string | null>(null);
   const [man, setMan] = useState({ name: '', k: '', p: '', c: '', f: '', fav: false, per100: false });
   const [err, setErr] = useState('');
+  const [alt, setAlt] = useState<Record<number, number>>({});
+  const [altOpen, setAltOpen] = useState<Record<number, boolean>>({});
   const bodyRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const inRef = useRef<HTMLInputElement>(null);
@@ -61,7 +64,7 @@ export function AddScreen() {
     if (!open) return;
     trayClear();
     void loadDb();
-    setQ(''); setFiles([]); setOpenRow(null); setSlotOpen(false); setMore(false); setSheet(null); setErr(''); setEditTiles(false); setTrayOpen(true);
+    setQ(''); setAlt({}); setFiles([]); setOpenRow(null); setSlotOpen(false); setMore(false); setSheet(null); setErr(''); setEditTiles(false); setTrayOpen(true);
     setView(addView === 'chat' || draftOf(chat.get().messages) ? 'chat' : 'tiles');
   }, [open]);
 
@@ -91,6 +94,27 @@ export function AddScreen() {
     return searchFoods(q, s, 10).filter((f) => !seen.has(f.name)).slice(0, 8);
   }, [q, dbReady, view, s.foodEdits, s.customFoods, s.entries]);
 
+  const parsed: Parsed[] = useMemo(() => (view === 'tiles' && q.trim() && dbReady ? parseMeal(q, s) : []), [q, dbReady, view, s.dishes, s.foodEdits, s.customFoods, s.entries]);
+  const np = useMemo(() => (view === 'tiles' ? parseNewProduct(q) : null), [q, view]);
+  useEffect(() => { setAlt({}); setAltOpen({}); }, [q]);
+  const showPreview = !np && parsed.some((x) => x.food || x.dish) && (parsed.length >= 2 || parsed[0].qty);
+  const addParsed = () => {
+    parsed.forEach((p, i) => {
+      if (p.dish) { trayAddDish(p.dish, p.amount); return; }
+      const L = [p.food, ...p.alts].filter(Boolean) as FoodRec[];
+      const f = L[alt[i] ?? 0];
+      if (f) trayAddFood(f, p.amount);
+    });
+    setQ('');
+  };
+  const saveNp = () => {
+    if (!np) return;
+    const cid = uid();
+    actions.saveCustomFood({ id: cid, name: np.name, unit: np.unit, per: np.per });
+    trayAdd({ key: 'c:' + cid, kind: 'food', name: np.name, unit: np.unit, base: np.unit === 'g' ? 100 : 1, per: np.per, amount: np.unit === 'g' ? np.grams : 1, w: 0, foodId: 'c:' + cid });
+    setQ('');
+    toast(`${np.name} נשמר במאגר שלך`);
+  };
   const addCand = (c: Cand) => trayAdd(c);
   const close = () => setUi({ addOpen: false });
   const scrollTop = () => { const b = bodyRef.current; if (b) b.scrollTo({ top: 0, behavior: 'smooth' }); };
@@ -323,11 +347,59 @@ export function AddScreen() {
           </>
         ) : q.trim() ? (
           <div class="as-res">
-            <button class="as-row ai" onClick={() => submit()}>
+            {np && (
+              <div class="g as-np">
+                <div class="lb"><Plus />מוצר חדש · הערכים {np.unit === 'g' ? `ל-${Math.round(np.grams)} גרם` : 'למנה אחת'}</div>
+                <b>{np.name}</b>
+                <div class="num vals"><span>{Math.round(np.unit === 'g' ? np.per.k * np.grams / 100 : np.per.k)} קל׳</span><span class="m1">{Math.round((np.unit === 'g' ? np.per.p * np.grams / 100 : np.per.p) * 10) / 10} ח׳</span><span class="m2">{Math.round((np.unit === 'g' ? np.per.c * np.grams / 100 : np.per.c) * 10) / 10} פ׳</span><span class="m3">{Math.round((np.unit === 'g' ? np.per.f * np.grams / 100 : np.per.f) * 10) / 10} ש׳</span></div>
+                <button class="as-cta sm" onClick={saveNp}>שמור במאגר שלי והוסף לארוחה</button>
+              </div>
+            )}
+            {showPreview && (
+              <div class="g as-pv">
+                <div class="lb">הבנתי, אפשר לתקן לפני ההוספה</div>
+                {parsed.map((p, i) => {
+                  const L = p.dish ? [] : [p.food, ...p.alts].filter(Boolean) as FoodRec[];
+                  const cur = L[alt[i] ?? 0];
+                  const g = p.amount;
+                  const per = p.dish ? dishPer100(p.dish) : cur?.per;
+                  const k = per ? Math.round(p.dish || cur?.unit === 'g' ? (per.k * g) / 100 : per.k * g) : 0;
+                  if (!p.dish && !cur) {
+                    return (
+                      <div class="pv-r miss" key={i}>
+                        <HelpCircle />
+                        <div class="n"><b>״{p.name}״ לא במאגר</b>
+                          <span class="pv-acts">
+                            <button onClick={() => { setMan({ ...man, name: p.name }); setSheet('manual'); }}>הוסף כמוצר חדש</button>
+                            {configured && <button onClick={() => submit(p.raw)}>שאל AI</button>}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  }
+                  return (
+                    <div class="pv-r" key={i}>
+                      <Check />
+                      <div class="n">
+                        <b>{p.dish ? p.dish.name : cur!.name}</b>
+                        <small class="num">{p.note ? `${p.note} = ` : ''}{p.unit === 'g' || p.dish ? `${g} ג׳` : `×${g}`}</small>
+                        {L.length > 1 && (altOpen[i]
+                          ? <span class="pv-alt">{L.map((f, j) => j !== (alt[i] ?? 0) && <button key={f.id} onClick={() => { setAlt({ ...alt, [i]: j }); setAltOpen({ ...altOpen, [i]: false }); }}>{f.name}</button>)}</span>
+                          : <button class="pv-sw" onClick={() => setAltOpen({ ...altOpen, [i]: true })}>לא זה? החלף</button>)}
+                      </div>
+                      <span class="k num">{k}</span>
+                    </div>
+                  );
+                })}
+                {parsed.some((p) => p.food || p.dish) && <button class="as-cta sm" onClick={addParsed}>הוסף {parsed.filter((p) => p.food || p.dish).length} לארוחה</button>}
+              </div>
+            )}
+            {!np && <button class="as-row ai" onClick={() => submit()}>
               <Sparkles />
               <div><b>שאל את ה-AI: ״{q.trim()}״</b><small>הוא יבין כמויות וירכיב לך ארוחה</small></div>
               <ChevronRight size={18} style={{ transform: 'scaleX(-1)' }} />
-            </button>
+            </button>}
+            {!showPreview && !np && (<>
             {results.map((c) => {
               const m = candMacros(c);
               return (
@@ -339,6 +411,7 @@ export function AddScreen() {
             })}
             {dbRes.length > 0 && <div class="as-lbl" style={{ marginTop: 6 }}><span>מהמאגר (משרד הבריאות)</span></div>}
             {dbRes.map((f) => <FoodRow key={f.id} f={f} onPick={() => pickFood(f)} />)}
+            </>)}
             {!dbReady && q.trim() && <div class="mu" style={{ padding: 8, fontSize: 13 }}>טוען את מאגר המזון…</div>}
           </div>
         ) : (
@@ -391,23 +464,22 @@ export function AddScreen() {
             ) : (
               <>
                 {tiles.length === 0 && <div class="as-emp">{tab === 'fav' ? 'אין מועדפים. לחץ על ⭐ בארוחה או במצרך כדי לשמור אותם כאן.' : 'אין אריחים להצגה.'}</div>}
-                <div class="as-grid">
+                <div class="as-hd"><span /><span>קל׳</span><span>ח׳</span><span /></div>
+                <div class="g as-dl">
                   {tiles.map((c) => {
                     const n = inTrayX(c);
                     const m = candMacros(c);
                     return (
-                      <div class={'as-tw' + (editTiles ? ' ed' : '')} key={c.key}>
-                        <button class={'as-tile' + (n ? ' on' : '')} onClick={() => (editTiles ? removeTile(c) : addCand(c))}>
-                          <span class="bd num">×{n}</span>
-                          <b>{c.name}</b>
-                          <small class="num">{c.note ?? (c.unit === 'g' ? `${c.amount} ג׳` : '')}{c.note || c.unit === 'g' ? ' · ' : ''}{m.k} קל׳</small>
-                        </button>
-                        {editTiles && <span class="as-xx" aria-hidden="true"><X /></span>}
-                      </div>
+                      <button class={'as-lr' + (n ? ' on' : '') + (editTiles ? ' ed' : '')} key={c.key} onClick={() => (editTiles ? removeTile(c) : addCand(c))}>
+                        <span class="nm"><b>{c.name}</b><small class="num">{c.note ?? (c.unit === 'g' ? `${c.amount} ג׳` : 'מנה')}</small></span>
+                        <span class="k num">{m.k}</span>
+                        <span class="pp num">{m.p}</span>
+                        {editTiles ? <span class="xx" aria-hidden="true"><X /></span> : <span class="plus" aria-hidden="true">{n ? <i class="num">×{n}</i> : <Plus />}</span>}
+                      </button>
                     );
                   })}
                   {editTiles && tab === 'food' && (
-                    <button class="as-tile add" onClick={() => setSheet('addtile')}><Plus /><b>הוסף אריח</b></button>
+                    <button class="as-lr add" onClick={() => setSheet('addtile')}><Plus />הוסף מצרך לרשימה</button>
                   )}
                 </div>
                 {editTiles && <div class="mu" style={{ fontSize: 12, margin: '8px 4px 0', lineHeight: 1.5 }}>לחיצה על אריח מסתירה אותו.{tab === 'meal' ? ' כדי להוסיף ארוחה: בנה אותה ולחץ על ⭐.' : ''}{s.hiddenTiles.length > 0 && <> <button class="lnk" onClick={() => s.hiddenTiles.forEach((k) => actions.unhideTile(k))}>החזר {s.hiddenTiles.length} אריחים מוסתרים</button></>}</div>}
