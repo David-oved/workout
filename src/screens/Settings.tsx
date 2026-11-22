@@ -1,11 +1,13 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import type { ComponentChildren } from 'preact';
-import { X, ChevronLeft, ChevronRight, User, Target, CalendarDays, CalendarPlus, Copy, Utensils, Sunrise, Download, Upload, RefreshCw, Plus, Minus, Trash, Info, Dumbbell } from 'lucide-preact';
+import { X, ChevronLeft, ChevronRight, User, Target, CalendarDays, CalendarPlus, Copy, Sparkles, Utensils, Sunrise, Download, Upload, RefreshCw, Plus, Minus, Trash, Info, Dumbbell } from 'lucide-preact';
 import { store, update, defaultState } from '../core/state';
 import { actions } from '../core/actions';
 import { fmt, suggestTargets } from '../core/calc';
 import { DAY_NAMES, todayKey, uid } from '../core/dates';
 import { setUi, ui, toast } from '../ui/ui';
+import { aiState, getAiKey, maskKey, clearAiKey, setAiModel } from '../ai/gemini';
+import { AiSetup } from './AiChat';
 import { bridge, scriptSource, pingBridge, connectBridge, disconnectBridge, refreshEvents, syncWorkouts } from '../core/bridge';
 import { feedState, feedUrl, webcalUrl, hasToken, verifyToken, saveToken, enableFeed, disconnectFeed, syncFeed } from '../core/calfeed';
 import { FullScreen, Sheet } from '../ui/components';
@@ -13,9 +15,9 @@ import { exportBackup, importBackup } from '../core/backup';
 import { APP_VERSION, BUILD_ID, updater, checkForUpdate, applyUpdate } from '../update/updater';
 import type { Macros, Profile, TargetKey } from '../core/types';
 
-type Page = 'home' | 'profile' | 'targets' | 'week' | 'meals' | 'start' | 'backup' | 'updates' | 'calendar' | 'gcal';
+type Page = 'home' | 'profile' | 'targets' | 'week' | 'meals' | 'start' | 'backup' | 'updates' | 'calendar' | 'gcal' | 'ai';
 const TITLES: Record<Page, string> = {
-  home: 'הגדרות', profile: 'פרופיל', targets: 'יעדי תזונה', week: 'שבוע ואימונים', meals: 'ארוחות', start: 'תחילת יום', backup: 'גיבוי', updates: 'עדכונים', calendar: 'פיד לקריאה בלבד', gcal: 'Google Calendar',
+  home: 'הגדרות', profile: 'פרופיל', targets: 'יעדי תזונה', week: 'שבוע ואימונים', meals: 'ארוחות', start: 'תחילת יום', backup: 'גיבוי', updates: 'עדכונים', calendar: 'פיד לקריאה בלבד', gcal: 'Google Calendar', ai: 'AI תזונה',
 };
 const TARGETS: [TargetKey, string][] = [
   ['dorm-rest', 'מעונות · מנוחה'], ['dorm-train', 'מעונות · אימון'], ['home-rest', 'בית · מנוחה'], ['home-train', 'בית · אימון'],
@@ -65,6 +67,7 @@ function SettingsBody() {
   const [busy, setBusy] = useState(false);
   const [tokErr, setTokErr] = useState('');
   const br = bridge.use((x) => x);
+  const aiS = aiState.use((x) => x);
   const [gurl, setGurl] = useState('');
   const [gerr, setGerr] = useState('');
   const s = store.use((x) => x);
@@ -130,6 +133,7 @@ function SettingsBody() {
               <Row icon={<Sunrise />} title="תחילת יום" value={set.resetHour === 0 ? 'חצות' : `0${set.resetHour}:00 לפנות בוקר`} onClick={() => setPage('start')} />
             </div>
             <div class="g rows" style={{ marginTop: 14 }}>
+              <Row icon={<Sparkles />} title="AI תזונה (Gemini)" value={aiS.configured ? 'מחובר' : 'הערכת קלוריות מטקסט ותמונה'} badge={!aiS.configured} onClick={() => setPage('ai')} />
               <Row icon={<CalendarDays />} title="Google Calendar" value={br.connected ? `מחובר · ${br.events.length} אירועים` : 'קריאת אירועים וכתיבת אימונים'} badge={!br.connected} onClick={() => setPage('gcal')} />
               <Row icon={<CalendarPlus />} title="פיד לקריאה בלבד" value={set.cal.enabled ? `פיד פעיל · התראה ${set.cal.alertMin || 'ללא'}${set.cal.alertMin ? ' דק׳ לפני' : ''}` : 'לא מחובר'} onClick={() => setPage('calendar')} />
               <Row icon={<Download />} title="גיבוי" value={`גיבוי אחרון: ${lastTxt}`} onClick={() => setPage('backup')} />
@@ -266,6 +270,22 @@ function SettingsBody() {
             </div>
           </>
         )}
+
+        {page === 'ai' && (aiS.configured ? (
+          <>
+            <div class="g card">
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}><b>Gemini מחובר</b><span class="mu num">{maskKey(getAiKey())}</span></div>
+              <div class="mu" style={{ marginTop: 6 }}>מודל: <span class="num">{aiS.model || 'ייבחר אוטומטית'}</span></div>
+            </div>
+            <button class="btn primary block" onClick={() => { setUi({ settingsOpen: false, aiOpen: true }); }}><Sparkles /> פתח שיחה עם ה-AI</button>
+            <div class="sec"><span>מודל (מתקדם)</span></div>
+            <div class="g card">
+              <input class="inp" style={{ direction: 'ltr', textAlign: 'left' }} value={aiS.model} placeholder="gemini-…" autocomplete="off" autocapitalize="none" spellcheck={false} onChange={(e) => setAiModel(nv(e))} />
+              <div class="note" style={{ margin: '8px 0 0' }}>השאר ריק והאפליקציה תבחר לבד את מודל ה-Flash היציב החדש ביותר של המפתח שלך.</div>
+            </div>
+            <button class="btn danger block" style={{ marginTop: 14 }} onClick={() => { if (confirm('לנתק את Gemini? המפתח יימחק מהטלפון.')) { clearAiKey(); toast('נותק'); } }}>נתק</button>
+          </>
+        ) : <AiSetup onDone={() => toast('Gemini מחובר')} />)}
 
         {page === 'gcal' && (() => {
           const ago = (t?: number) => { if (!t) return 'עוד לא'; const m = Math.max(0, Math.round((Date.now() - t) / 60000)); return m === 0 ? 'הרגע' : `לפני ${m} דק׳`; };

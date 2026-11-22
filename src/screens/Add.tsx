@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'preact/hooks';
-import { X, Search, Plus, Star, Undo2, Minus } from 'lucide-preact';
+import { X, Search, Plus, Star, Undo2, Minus, Sparkles } from 'lucide-preact';
 import { store } from '../core/state';
 import { actions } from '../core/actions';
 import { fmt, recentFoods, scale } from '../core/calc';
@@ -96,6 +96,7 @@ export function AddScreen() {
         <button class="g ib" onClick={() => setUi({ addOpen: false })} aria-label="סגור"><X /></button>
       </div>
 
+      <button class="g aibtn" onClick={() => setUi({ aiOpen: true })}><Sparkles /><span>שוחח עם ה-AI<small>תיאור, תמונה או תווית תזונה</small></span></button>
       <div class="chips">
         {s.settings.slots.map((sl) => (
           <button class={'chip' + (sl.id === slot ? ' on' : '')} onClick={() => setUi({ addSlot: sl.id })}>{sl.name}</button>

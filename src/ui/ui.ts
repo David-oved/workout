@@ -13,6 +13,7 @@ export interface Ui {
   addDate: string;
   settingsOpen: boolean;
   settingsPage: string | null;
+  aiOpen: boolean;
   editEntry: string | null;
   workoutSheet: { id?: string; date: string } | null;
   toast: Toast | null;
@@ -27,6 +28,7 @@ export const ui = createStore<Ui>({
   addDate: todayKey(reset),
   settingsOpen: false,
   settingsPage: null,
+  aiOpen: false,
   editEntry: null,
   workoutSheet: null,
   toast: null,
