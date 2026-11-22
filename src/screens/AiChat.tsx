@@ -158,12 +158,14 @@ export function AiChat() {
         {st.messages.map((m) => (
           <div class={'msg ' + (m.role === 'user' ? 'u' : 'a')} key={m.id}>
             <div class="mcol">
+              {m.streaming && !m.text && <div class="mb typing"><i /><i /><i /></div>}
               {(m.text || m.images?.length) && (
                 <div class="mb">
                   {m.images?.length ? <div class="mimgs">{m.images.map((u) => <img src={u} />)}</div> : null}
                   {m.text}
                 </div>
               )}
+              {m.meta && <div class="mu num" style={{ fontSize: 11, margin: '0 6px', direction: 'ltr' }}>{m.meta.model} · {(m.meta.ms / 1000).toFixed(1)}s</div>}
               {m.card === 'draft' && <MealCard m={m} slotName={slotName} onAdd={() => addCardToDay(m.id, date, slot, slotName)} />}
               {m.card === 'added' && (
                 <div class="g mcard added">
@@ -175,7 +177,6 @@ export function AiChat() {
             </div>
           </div>
         ))}
-        {st.busy && <div class="msg a"><div class="mb typing"><i /><i /><i /></div></div>}
         {st.error && (
           <div class="aerr">
             <div>{st.error} <button onClick={() => void retryLast()}>נסה שוב</button></div>

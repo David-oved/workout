@@ -10,6 +10,7 @@ const API = 'https://generativelanguage.googleapis.com/v1beta';
 const KEY = 'wo:ai-key';
 const MODEL = 'wo:ai-model';
 const MODELS = 'wo:ai-models';
+const PINNED = 'wo:ai-pinned';
 
 const get = (k: string) => { try { return localStorage.getItem(k); } catch { return null; } };
 const put = (k: string, v: string | null) => { try { v === null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch { /* ignore */ } };
@@ -23,6 +24,7 @@ export const aiState = createStore({
   models: readModels(),
   test: undefined as TestResult | undefined,
   testing: false,
+  pinned: get(PINNED) === '1',
 });
 export const getAiKey = () => get(KEY) ?? '';
 export const maskKey = (k: string) => (k.length > 10 ? `${k.slice(0, 4)}…${k.slice(-4)}` : '••••');
@@ -113,7 +115,8 @@ export async function saveAiKey(key: string): Promise<{ ok: boolean; msg?: strin
     put(KEY, k);
     put(MODEL, model);
     put(MODELS, JSON.stringify(models));
-    aiState.set({ configured: true, model, models, test: tried[tried.length - 1], testing: false });
+    put(PINNED, null);
+    aiState.set({ configured: true, model, models, test: tried[tried.length - 1], testing: false, pinned: false });
     return { ok: true };
   } catch (e) {
     if (e instanceof AiHttpError) return { ok: false, msg: e.message };
@@ -125,7 +128,8 @@ export function clearAiKey() {
   put(KEY, null);
   put(MODEL, null);
   put(MODELS, null);
-  aiState.set({ configured: false, model: '', models: [], test: undefined, testing: false });
+  put(PINNED, null);
+  aiState.set({ configured: false, model: '', models: [], test: undefined, testing: false, pinned: false });
 }
 
 /** בדיקת חיבור חיה למודל הנוכחי (או לאחר שצוין) */
@@ -135,7 +139,7 @@ export async function testModel(model?: string) {
   const m = model || get(MODEL) || FALLBACKS[0];
   aiState.set((s) => ({ ...s, testing: true }));
   const res = await probe(key, m);
-  if (res.ok && model) { put(MODEL, model); aiState.set((s) => ({ ...s, model })); }
+  if (res.ok && model) { put(MODEL, model); put(PINNED, '1'); aiState.set((s) => ({ ...s, model, pinned: true })); }
   aiState.set((s) => ({ ...s, test: res, testing: false }));
 }
 
@@ -177,13 +181,50 @@ function withDetail(e: AiHttpError, log: string[]) {
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-/** תור בשיחה: שולח את כל ההיסטוריה ומקבל הודעה ורשימת מנות מעודכנת. בשגיאת שרת מנסה שוב ועם מודלים אחרים. */
-export async function chatTurn(turns: ChatTurn[]): Promise<AiResult> {
+/** חזרה לאוטומטי: מודל מהיר לטקסט ומודל חזק יותר לתמונות */
+export function unpinModel() {
+  put(PINNED, null);
+  aiState.set((s) => ({ ...s, pinned: false }));
+}
+
+/**
+ * רמת חשיבה לפי מודל (לפי התיעוד): ברירת המחדל של המודלים החדשים כוללת חשיבה והיא מאטה.
+ * flash-lite ו-3.6 תומכים ב-minimal. ל-3.8 ול-Gemini 4 אסור minimal, אז low.
+ */
+const thinkingFor = (id: string): string | undefined => {
+  if (/flash-lite/.test(id) || /^gemini-3\.[56]-flash$/.test(id)) return 'minimal';
+  if (/^gemini-[34]/.test(id)) return 'low';
+  return undefined;
+};
+
+/** סדר המודלים לניסיון: מהיר לטקסט, חזק יותר לתמונות. אם המשתמש נעל מודל, הוא קודם. */
+function modelOrder(hasImages: boolean, current: string): string[] {
+  const avail = aiState.get().models;
+  const has = (m: string) => !avail.length || avail.includes(m);
+  const auto = hasImages
+    ? ['gemini-3.6-flash', 'gemini-3.8-flash', current, 'gemini-3.5-flash-lite']
+    : ['gemini-3.5-flash-lite', 'gemini-3.6-flash', current, 'gemini-3.8-flash'];
+  const base = aiState.get().pinned ? [current, ...auto] : auto;
+  return [...new Set(base.filter((m) => m === current || has(m)))].slice(0, 3);
+}
+
+export interface ChatResult extends AiResult { model: string; ms: number }
+
+/** תור בשיחה בזרימה (SSE): מחזיר הודעה ורשימת מנות, ומדווח על הטקסט החלקי תוך כדי. בשגיאת שרת מנסה מודלים אחרים. */
+export async function chatTurn(turns: ChatTurn[], onDelta?: (acc: string) => void): Promise<ChatResult> {
   const key = getAiKey();
   if (!key) throw new Error('אין מפתח Gemini. חבר מפתח בהגדרות');
+  const hasImages = !!turns[turns.length - 1]?.images?.length || turns.some((t) => t.images?.length);
 
-  const bodyFor = (json: boolean) =>
-    JSON.stringify({
+  const bodyFor = (model: string, v: { x: boolean; j: boolean }) => {
+    const gen: Record<string, unknown> = { temperature: 0.3 };
+    if (v.j) gen.responseMimeType = 'application/json';
+    if (v.x) {
+      const lvl = thinkingFor(model);
+      if (lvl) gen.thinkingConfig = { thinkingLevel: lvl };
+      if (hasImages) gen.mediaResolution = 'MEDIA_RESOLUTION_MEDIUM';
+    }
+    return JSON.stringify({
       systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
       contents: turns.map((t) => ({
         role: t.role,
@@ -192,60 +233,87 @@ export async function chatTurn(turns: ChatTurn[]): Promise<AiResult> {
           ...(t.images ?? []).map((i) => ({ inlineData: { mimeType: i.mime, data: i.data } })),
         ],
       })),
-      generationConfig: json ? { responseMimeType: 'application/json', temperature: 0.3 } : { temperature: 0.3 },
+      generationConfig: gen,
     });
+  };
 
-  const call = async (model: string, json: boolean) => {
+  const stream = async (model: string, v: { x: boolean; j: boolean }) => {
     const ctl = new AbortController();
-    const to = setTimeout(() => ctl.abort(), 60_000);
+    const to = setTimeout(() => ctl.abort(), 75_000);
     try {
-      const r = await fetch(`${API}/models/${model}:generateContent`, {
+      const r = await fetch(`${API}/models/${model}:streamGenerateContent?alt=sse`, {
         method: 'POST',
         headers: { 'x-goog-api-key': key, 'Content-Type': 'application/json' },
-        body: bodyFor(json),
+        body: bodyFor(model, v),
         signal: ctl.signal,
       });
       if (!r.ok) throw await httpError(r);
-      return r.json();
+      let acc = '';
+      let blocked = '';
+      const eat = (event: string) => {
+        const data = event.split(/\r?\n/).filter((l) => l.startsWith('data:')).map((l) => l.slice(5).trim()).join('');
+        if (!data || data === '[DONE]') return;
+        let j: any;
+        try { j = JSON.parse(data); } catch { return; }
+        if (j?.promptFeedback?.blockReason) blocked = j.promptFeedback.blockReason;
+        for (const p of j?.candidates?.[0]?.content?.parts ?? []) {
+          if (p?.thought) continue;
+          if (typeof p?.text === 'string') acc += p.text;
+        }
+        onDelta?.(acc);
+      };
+      const reader = r.body?.getReader();
+      if (!reader) {
+        for (const ev of (await r.text()).split(/\r?\n\r?\n/)) eat(ev);
+      } else {
+        const dec = new TextDecoder();
+        let buf = '';
+        for (;;) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buf += dec.decode(value, { stream: true });
+          const parts = buf.split(/\r?\n\r?\n/);
+          buf = parts.pop() ?? '';
+          for (const ev of parts) eat(ev);
+        }
+        if (buf.trim()) eat(buf);
+      }
+      return { acc, blocked };
     } finally {
       clearTimeout(to);
     }
   };
 
   const log: string[] = [];
+  const t0 = performance.now();
   try {
     const cur = await ensureModel(key);
-    const alts = FALLBACKS.filter((m) => m !== cur && m !== 'gemini-flash-latest').slice(0, 2);
-    const attempts: { model: string; json: boolean }[] = [
-      { model: cur, json: true },
-      { model: cur, json: false },
-      ...alts.map((m) => ({ model: m, json: true })),
-    ];
     let last: AiHttpError | undefined;
-    for (const a of attempts) {
-      try {
-        const j = await call(a.model, a.json);
-        if (j?.promptFeedback?.blockReason) throw new Error('הבקשה נחסמה על ידי Gemini. נסה לנסח אחרת');
-        const text = (j?.candidates?.[0]?.content?.parts ?? []).map((p: any) => p?.text ?? '').join('');
-        if (!text.trim()) {
-          log.push(`${a.model}${a.json ? '' : ' (בלי JSON)'}: תשובה ריקה`);
-          continue;
+    for (const model of modelOrder(hasImages, cur)) {
+      for (const v of [{ x: true, j: true }, { x: false, j: true }, { x: false, j: false }]) {
+        try {
+          const { acc, blocked } = await stream(model, v);
+          if (blocked) throw new Error('הבקשה נחסמה על ידי Gemini. נסה לנסח אחרת');
+          if (!acc.trim()) { log.push(`${model}: תשובה ריקה`); continue; }
+          const res = parseAiJson(acc, uid);
+          return { ...res, model, ms: Math.round(performance.now() - t0) };
+        } catch (e) {
+          if (!(e instanceof AiHttpError)) {
+            if ((e as Error).name === 'AbortError') { log.push(`${model}: פג הזמן`); break; }
+            if (e instanceof SyntaxError) { log.push(`${model}: JSON שבור`); continue; }
+            throw e;
+          }
+          log.push(`${model}${v.x ? '' : v.j ? ' (בלי הגדרות מהירות)' : ' (בלי JSON)'} → ${e.status}: ${e.raw || e.message}`);
+          last = e;
+          if (e.fatal) throw withDetail(e, log);
+          if (e.status === 400) continue; // ננסה את אותו מודל בלי ההגדרות הנוספות
+          if (e.status >= 500 || e.status === 429) await sleep(e.status === 429 ? 2000 : 700);
+          break; // עוברים למודל הבא
         }
-        return parseAiJson(text, uid);
-      } catch (e) {
-        if (!(e instanceof AiHttpError)) {
-          if ((e as Error).name === 'AbortError') { log.push(`${a.model}: פג הזמן`); continue; }
-          throw e;
-        }
-        log.push(`${a.model}${a.json ? '' : ' (בלי JSON)'} → ${e.status}: ${e.raw || e.message}`);
-        last = e;
-        if (e.fatal) throw withDetail(e, log);
-        if (e.status >= 500 || e.status === 429) await sleep(e.status === 429 ? 2500 : 900);
       }
     }
     if (last) throw withDetail(last, log);
-    const e = new AiHttpError(0, 'Gemini לא החזיר תשובה שימושית. נסה שוב', '', false);
-    throw withDetail(e, log);
+    throw withDetail(new AiHttpError(0, 'Gemini לא החזיר תשובה שימושית. נסה שוב', '', false), log);
   } catch (e) {
     if (e instanceof AiHttpError) throw e;
     if (e instanceof TypeError) throw new Error('אין חיבור לאינטרנט');

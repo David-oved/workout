@@ -103,3 +103,33 @@ export function pickModel(models: ModelInfo[]): string | null {
   const lite = ids.filter((id) => /flash/i.test(id) && !/(preview|exp|image|tts|live|audio|embed)/i.test(id)).sort(cmp);
   return lite[0] ?? null;
 }
+
+/** מחלץ את שדה "reply" מ-JSON חלקי שמגיע בזרימה, כדי להציג את ההודעה תוך כדי כתיבה */
+export function extractReply(partial: string): string {
+  const m = partial.match(/"reply"\s*:\s*"/);
+  if (!m || m.index === undefined) return '';
+  let i = m.index + m[0].length;
+  let out = '';
+  const esc: Record<string, string> = { n: '\n', t: '\t', r: '\r', '"': '"', '\\': '\\', '/': '/' };
+  while (i < partial.length) {
+    const ch = partial[i];
+    if (ch === '"') break;
+    if (ch === '\\') {
+      const n = partial[i + 1];
+      if (n === undefined) break;
+      if (n === 'u') {
+        const hex = partial.slice(i + 2, i + 6);
+        if (hex.length < 4) break;
+        out += String.fromCharCode(parseInt(hex, 16));
+        i += 6;
+        continue;
+      }
+      out += esc[n] ?? n;
+      i += 2;
+      continue;
+    }
+    out += ch;
+    i++;
+  }
+  return out;
+}

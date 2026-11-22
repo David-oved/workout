@@ -5,7 +5,7 @@ import { dayInfo } from '../core/calc';
 import { uid } from '../core/dates';
 import { toast, ui } from '../ui/ui';
 import { chatTurn, type ChatTurn } from './gemini';
-import { itemMacros, type AiItem } from './pure';
+import { extractReply, itemMacros, type AiItem } from './pure';
 
 /**
  * שיחה עם ה-AI: הודעות, וכרטיס ארוחה שנבנה ומתעדכן במהלך השיחה.
@@ -22,6 +22,8 @@ export interface Msg {
   edited?: boolean;
   addedIds?: string[];
   addedLabel?: string;
+  streaming?: boolean;
+  meta?: { model: string; ms: number };
 }
 interface ChatState { messages: Msg[]; busy: boolean; error?: string; detail?: string }
 
@@ -40,6 +42,7 @@ const imgData = new Map<string, { mime: string; data: string }[]>();
 function setChat(fn: (s: ChatState) => ChatState) {
   chat.set(fn);
   try {
+    if (chat.get().messages.some((m) => m.streaming)) return;
     const msgs = chat.get().messages.slice(-40).map((m) => ({ ...m, images: undefined }));
     localStorage.setItem(LS, JSON.stringify({ messages: msgs }));
   } catch { /* ignore */ }
@@ -80,23 +83,42 @@ function buildTurns(msgs: Msg[]): ChatTurn[] {
 const stripId = ({ id: _id, ...rest }: AiItem) => rest;
 
 async function runTurn() {
-  setChat((s) => ({ ...s, busy: true, error: undefined, detail: undefined }));
+  const ph = uid();
+  setChat((s) => ({
+    ...s,
+    busy: true,
+    error: undefined,
+    detail: undefined,
+    messages: [...s.messages, { id: ph, role: 'ai', text: '', streaming: true }],
+  }));
   try {
-    const res = await chatTurn(buildTurns(chat.get().messages));
+    const turns = buildTurns(chat.get().messages.filter((m) => m.id !== ph));
+    const res = await chatTurn(turns, (acc) => {
+      const r = extractReply(acc);
+      if (r) patchMsg(ph, (m) => (m.text === r ? m : { ...m, text: r }));
+    });
     setChat((s) => {
-      const msgs = [...s.messages];
-      const ai: Msg = { id: uid(), role: 'ai', text: res.reply, sent: res.items };
+      let msgs = [...s.messages];
+      const idx = msgs.findIndex((m) => m.id === ph);
+      const ai: Msg = { id: ph, role: 'ai', text: res.reply, sent: res.items, meta: { model: res.model, ms: res.ms } };
       if (res.items.length) {
-        const prev = [...msgs].map((m, i) => [m, i] as const).reverse().find(([m]) => m.card === 'draft');
+        const prev = msgs.map((m, i) => [m, i] as const).reverse().find(([m]) => m.card === 'draft');
         if (prev) msgs[prev[1]] = { ...prev[0], items: undefined, card: 'old' };
         ai.items = res.items;
         ai.card = 'draft';
       }
-      msgs.push(ai);
+      if (idx >= 0) msgs[idx] = ai;
+      else msgs = [...msgs, ai];
       return { ...s, messages: msgs, busy: false };
     });
   } catch (e) {
-    setChat((s) => ({ ...s, busy: false, error: (e as Error).message, detail: (e as { detail?: string }).detail }));
+    setChat((s) => ({
+      ...s,
+      busy: false,
+      messages: s.messages.filter((m) => m.id !== ph),
+      error: (e as Error).message,
+      detail: (e as { detail?: string }).detail,
+    }));
   }
 }
 

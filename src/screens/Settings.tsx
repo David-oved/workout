@@ -6,7 +6,7 @@ import { actions } from '../core/actions';
 import { fmt, suggestTargets } from '../core/calc';
 import { DAY_NAMES, todayKey, uid } from '../core/dates';
 import { setUi, ui, toast } from '../ui/ui';
-import { aiState, getAiKey, maskKey, clearAiKey, testModel, refreshModels } from '../ai/gemini';
+import { aiState, getAiKey, maskKey, clearAiKey, testModel, refreshModels, unpinModel } from '../ai/gemini';
 import { AiSetup } from './AiChat';
 import { bridge, scriptSource, pingBridge, connectBridge, disconnectBridge, refreshEvents, syncWorkouts } from '../core/bridge';
 import { feedState, feedUrl, webcalUrl, hasToken, verifyToken, saveToken, enableFeed, disconnectFeed, syncFeed } from '../core/calfeed';
@@ -294,7 +294,8 @@ function SettingsBody() {
                 </button>
               ))}
             </div>
-            <div class="note">לחיצה על מודל בודקת אותו, ואם הוא עונה הוא נבחר. מומלץ: gemini-3.8-flash (יציב, מהיר ומבין תמונות).</div>
+            <div class="note">{aiS.pinned ? 'נעלת מודל מסוים: הוא ישמש לכל הבקשות. ' : 'מצב אוטומטי: מודל מהיר לטקסט, ומודל חזק יותר לתמונות ותוויות. '}לחיצה על מודל ברשימה בודקת אותו ונועלת אותו.</div>
+            {aiS.pinned && <button class="btn block" style={{ marginTop: 8 }} onClick={() => { unpinModel(); toast('חזרת למצב אוטומטי'); }}>חזור למצב אוטומטי</button>}
             <div class="note">לפי התיעוד של Google, במסלול החינמי ייתכן שתוכן שנשלח משמש לשיפור המוצרים שלהם. אם חשוב לך, אפשר להפעיל חיוב ב-Google AI Studio.</div>
 
             <button class="btn block" style={{ marginTop: 14 }} onClick={() => { setUi({ settingsOpen: false, aiOpen: true }); }}><Sparkles /> פתח שיחה עם ה-AI</button>
