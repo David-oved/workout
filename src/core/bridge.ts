@@ -13,6 +13,7 @@ const KEY_KEY = 'wo:bridge-key';
 const EV_KEY = 'wo:ext-events';
 const HASH_KEY = 'wo:bridge-hash';
 const SYNC_AT = 'wo:bridge-sync-at';
+const CALS_KEY = 'wo:bridge-cals';
 
 const get = (k: string) => { try { return localStorage.getItem(k); } catch { return null; } };
 const put = (k: string, v: string | null) => { try { v === null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch { /* ignore */ } };
@@ -20,6 +21,8 @@ const put = (k: string, v: string | null) => { try { v === null ? localStorage.r
 export interface BridgeState {
   connected: boolean;
   events: ExtEvent[];
+  calendars: string[]; // היומנים ש-Google מצא בחשבון
+  range?: { from: string; to: string };
   evStatus: 'idle' | 'loading' | 'ok' | 'error';
   evAt?: number;
   evMsg?: string;
@@ -40,6 +43,7 @@ const cached = loadEvents();
 export const bridge = createStore<BridgeState>({
   connected: !!get(URL_KEY) && !!get(KEY_KEY),
   events: cached.events,
+  calendars: (() => { try { return JSON.parse(get(CALS_KEY) ?? '[]'); } catch { return []; } })(),
   evStatus: 'idle',
   evAt: cached.at,
   syncStatus: 'idle',
@@ -81,9 +85,10 @@ export async function pingBridge(url: string): Promise<{ ok: boolean; msg?: stri
   }
 }
 
-export function connectBridge(url: string) {
+export function connectBridge(url: string, calendars: string[] = []) {
   put(URL_KEY, url.trim());
-  bridge.set((s) => ({ ...s, connected: true }));
+  put(CALS_KEY, JSON.stringify(calendars));
+  bridge.set((s) => ({ ...s, connected: true, calendars }));
   void refreshEvents(true);
   void syncWorkouts(true);
 }
@@ -93,11 +98,12 @@ export function disconnectBridge() {
   put(KEY_KEY, null);
   put(EV_KEY, null);
   put(HASH_KEY, null);
-  bridge.set({ connected: false, events: [], evStatus: 'idle', syncStatus: 'idle' });
+  put(CALS_KEY, null);
+  bridge.set({ connected: false, events: [], calendars: [], evStatus: 'idle', syncStatus: 'idle' });
 }
 
 let loading = false;
-/** מביא את אירועי היומן ל-3 שבועות קדימה (ויום אחורה) */
+/** מביא את אירועי היומן: שבועיים אחורה ועד חודשיים קדימה */
 export async function refreshEvents(force = false) {
   const url = bridgeUrl();
   const key = get(KEY_KEY);
@@ -108,11 +114,18 @@ export async function refreshEvents(force = false) {
   bridge.set((s) => ({ ...s, evStatus: 'loading', evMsg: undefined }));
   try {
     const today = todayKey(store.get().settings.resetHour);
-    const j = await callGet(url, key, { action: 'events', from: addDays(today, -1), to: addDays(today, 21) });
+    const from = addDays(today, -14);
+    const to = addDays(today, 60);
+    const [j, pj] = await Promise.all([
+      callGet(url, key, { action: 'events', from, to }),
+      callGet(url, key, { action: 'ping' }).catch(() => null),
+    ]);
+    const calendars: string[] = Array.isArray(pj?.calendars) ? pj.calendars : bridge.get().calendars;
+    put(CALS_KEY, JSON.stringify(calendars));
     if (!j?.ok) throw new Error(j?.error === 'unauthorized' ? 'המפתח לא תואם' : String(j?.error ?? 'שגיאה'));
     const at = Date.now();
     put(EV_KEY, JSON.stringify({ events: j.events, at }));
-    bridge.set((s) => ({ ...s, events: j.events, evStatus: 'ok', evAt: at }));
+    bridge.set((s) => ({ ...s, events: j.events, calendars, range: { from, to }, evStatus: 'ok', evAt: at }));
   } catch (e) {
     bridge.set((s) => ({ ...s, evStatus: 'error', evMsg: e instanceof TypeError ? 'אין חיבור לאינטרנט' : (e as Error).message }));
   } finally {

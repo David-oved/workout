@@ -4,7 +4,7 @@ import { X, ChevronLeft, ChevronRight, User, Target, CalendarDays, CalendarPlus,
 import { store, update, defaultState } from '../core/state';
 import { actions } from '../core/actions';
 import { fmt, suggestTargets } from '../core/calc';
-import { DAY_NAMES, uid } from '../core/dates';
+import { DAY_NAMES, todayKey, uid } from '../core/dates';
 import { setUi, ui, toast } from '../ui/ui';
 import { bridge, scriptSource, pingBridge, connectBridge, disconnectBridge, refreshEvents, syncWorkouts } from '../core/bridge';
 import { feedState, feedUrl, webcalUrl, hasToken, verifyToken, saveToken, enableFeed, disconnectFeed, syncFeed } from '../core/calfeed';
@@ -297,7 +297,7 @@ function SettingsBody() {
                     const r = await pingBridge(v);
                     setBusy(false);
                     if (!r.ok) { setGerr(r.msg ?? 'שגיאה'); return; }
-                    connectBridge(v);
+                    connectBridge(v, r.calendars ?? []);
                     setGurl('');
                     toast(`מחובר. נמצאו ${r.calendars?.length ?? 0} יומנים`);
                   }}>{busy ? 'מתחבר…' : 'חבר'}</button>
@@ -310,7 +310,7 @@ function SettingsBody() {
           return (
             <>
               <div class="g card">
-                <div style={{ display: 'flex', justifyContent: 'space-between' }}><b>מחובר ליומן Google</b><span class="mu num">{br.events.length} אירועים בשלושה שבועות</span></div>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}><b>מחובר ליומן Google</b><span class="mu num">{br.events.length} אירועים בטווח</span></div>
                 <div class="mu" style={{ marginTop: 8, lineHeight: 1.7 }}>
                   קריאת אירועים: {br.evStatus === 'loading' ? 'מרענן…' : ago(br.evAt)}<br />
                   כתיבת אימונים: {br.syncStatus === 'syncing' ? 'מעדכן…' : ago(br.syncAt)}
@@ -321,6 +321,28 @@ function SettingsBody() {
                 <button class="btn" style={{ flex: 1 }} onClick={() => void refreshEvents(true)}><RefreshCw class={br.evStatus === 'loading' ? 'spin' : ''} /> רענן אירועים</button>
                 <button class="btn" style={{ flex: 1 }} onClick={() => void syncWorkouts(true)}><RefreshCw class={br.syncStatus === 'syncing' ? 'spin' : ''} /> סנכרן אימונים</button>
               </div>
+              <div class="sec"><span>מה נמצא ביומן שלך</span></div>
+              <div class="g card">
+                {br.calendars.length === 0 && <div class="mu">עוד לא נטענו יומנים. לחץ "רענן אירועים".</div>}
+                {br.calendars.map((name) => {
+                  const n = br.events.filter((e) => e.cal === name).length;
+                  return <div class="stp" key={name} style={{ padding: 0, minHeight: 40 }}><span>{name}</span><span class="mu num">{name === 'workOut' ? 'יומן האימונים שלי' : `${n} אירועים`}</span></div>;
+                })}
+                {br.range && <div class="mu num" style={{ marginTop: 8, fontSize: 12 }}>טווח: {br.range.from} עד {br.range.to}</div>}
+                {br.evStatus === 'ok' && br.events.length === 0 && (
+                  <div style={{ color: 'var(--warn)', marginTop: 10, fontSize: 14, lineHeight: 1.6 }}>לא נמצאו אירועים ביומני Google האלה. אם האירועים שלך נמצאים ביומן של אפל (iCloud) או בחשבון Google אחר, הם לא יופיעו כאן. אפשר להחליף ל-Google את "יומן ברירת מחדל" באייפון, או לחבר את החשבון הנכון.</div>
+                )}
+              </div>
+              {br.events.length > 0 && (
+                <>
+                  <div class="sec"><span>האירועים הקרובים</span></div>
+                  <div class="g rows">
+                    {br.events.filter((e) => e.start.slice(0, 10) >= todayKey(set.resetHour)).sort((a, b) => a.start.localeCompare(b.start)).slice(0, 6).map((e) => (
+                      <div class="row2" key={e.id}><span>{e.title}<small>{e.cal}</small></span><span class="mu num" style={{ direction: 'ltr' }}>{e.allDay ? e.start.slice(5, 10) : e.start.slice(5, 10) + ' ' + e.start.slice(11, 16)}</span></div>
+                    ))}
+                  </div>
+                </>
+              )}
               <div class="sec"><span>התראה לפני אימון</span></div>
               <div class="chips">
                 {([[0, 'ללא'], [15, '15 דק׳'], [30, '30 דק׳'], [60, 'שעה']] as const).map(([m, l]) => (
