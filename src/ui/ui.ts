@@ -18,6 +18,7 @@ export interface Ui {
   editEntry: string | null;
   workoutSheet: { id?: string; date: string } | null;
   training: { workoutId?: string; date: string; title: string } | null;
+  summary: string | null; // תאריך הסיכום הפתוח
   toast: Toast | null;
 }
 
@@ -35,6 +36,7 @@ export const ui = createStore<Ui>({
   editEntry: null,
   workoutSheet: null,
   training: null,
+  summary: null,
   toast: null,
 });
 

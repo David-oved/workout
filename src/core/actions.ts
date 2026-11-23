@@ -66,6 +66,9 @@ export const actions = {
   deleteSession(id: string) {
     update((s) => ({ ...s, sessions: s.sessions.filter((y) => y.id !== id) }));
   },
+  saveSummary(date: string, x: { text: string; ts: number; model: string }) {
+    update((s) => ({ ...s, summaries: { ...s.summaries, [date]: x } }));
+  },
   addWater(date: string, ml: number) {
     update((s) => ({ ...s, water: { ...s.water, [date]: Math.max(0, (s.water[date] ?? 0) + ml) } }));
   },

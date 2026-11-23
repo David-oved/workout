@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'preact/hooks';
-import { Bell, X, Droplets, ListChecks, Minus, Settings as Cog, ChevronLeft, ChevronRight, Plus, Dumbbell, Check, Copy, Download, Siren, RefreshCw, Utensils } from 'lucide-preact';
+import { Sparkles, Bell, X, Droplets, ListChecks, Minus, Settings as Cog, ChevronLeft, ChevronRight, Plus, Dumbbell, Check, Copy, Download, Siren, RefreshCw, Utensils } from 'lucide-preact';
 import { EventList } from '../ui/EventList';
 import { bridge, refreshEvents, syncWorkouts } from '../core/bridge';
 import { conflictsFor, eventsOn, hhmm, suggestSlot } from '../core/conflicts';
@@ -67,6 +67,7 @@ function Nudges({ today }: { today: string }) {
     else if (c.kind === 'progress') setUi({ tab: 'progress' });
     else if (c.kind === 'train') setUi({ training: { workoutId: c.workoutId, date: c.date ?? today, title: c.title ?? 'אימון' } });
     else if (c.kind === 'water') actions.addWater(today, 250);
+    else if (c.kind === 'summary') setUi({ summary: today });
     if (c.kind !== 'water') dismiss(n.id);
   };
   return (
@@ -204,6 +205,12 @@ export function TodayScreen() {
       </div>
 
       {info.workouts.map((w) => <WorkoutCard w={w} key={w.id} />)}
+
+      <button class="g sumrow" onClick={() => setUi({ summary: date })}>
+        <Sparkles />
+        <span class="tx"><b>סיכום {date === today ? 'היום' : 'היום הזה'}</b><small>{s.summaries[date] ? s.summaries[date].text.replace(/[*#]/g, '').replace(/[\r\n\t ]+/g, ' ').trim().slice(0, 60) + '…' : 'אכילה, אימון, מה לשפר ומה לעשות מחר'}</small></span>
+        <ChevronLeft />
+      </button>
       {connected && info.workouts.filter((w) => w.status === 'planned').map((w) => {
         const cf = conflictsFor(w, ext);
         if (!cf.length) return null;

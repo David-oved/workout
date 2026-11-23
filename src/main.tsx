@@ -1,6 +1,8 @@
 import { render } from 'preact';
 import './styles/global.css';
-import { loadState } from './core/state';
+import { loadState, store } from './core/state';
+import { setUi } from './ui/ui';
+import { todayKey } from './core/dates';
 import { initUpdater } from './update/updater';
 import { startFeedSync } from './core/calfeed';
 import { startBridge } from './core/bridge';
@@ -17,6 +19,10 @@ async function boot() {
   startFeedSync();
   startBridge();
   startPush();
+  // לחיצה על התראת "סיכום היום": נפתח הסיכום (אם האפליקציה כבר פתוחה ההודעה מגיעה מה-Service Worker)
+  const openSummary = () => setUi({ tab: 'today', summary: todayKey(store.get().settings.resetHour) });
+  if (new URLSearchParams(location.search).has('summary')) { openSummary(); history.replaceState(null, '', location.pathname); }
+  navigator.serviceWorker?.addEventListener('message', (e) => { if (e.data?.summary) openSummary(); });
 
   // אנימציית הפתיחה: מינימום ~1.7 שניות כדי שתושלם, ואז דועכת
   const splash = document.getElementById('splash');

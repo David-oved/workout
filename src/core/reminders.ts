@@ -60,6 +60,12 @@ export function buildSchedule(s: State, now = new Date()): PushItem[] {
       }
     }
   }
+  if (r.summary.on) {
+    for (let d = today; d <= to; d = addDays(d, 1)) {
+      const at = localMs(d, r.summary.time);
+      if (at > now.getTime()) out.push({ id: `sm:${d}`, at, title: 'סיכום היום', body: 'לחץ לקבל סיכום מה-AI', kind: 'summary' });
+    }
+  }
   for (const it of buildReminders(s, today, to, now)) {
     const kind = it.id.split(':')[1];
     const [title, body] = it.title.includes(': ') ? it.title.split(': ') : [it.title, ''];
@@ -83,7 +89,7 @@ export function reminderKey(s: State): string {
   return JSON.stringify([s.settings.remind, s.settings.slots, [...new Set(s.entries.filter((e) => e.date === today).map((e) => e.slot))].sort(), s.weights.some((w) => w.date === today), today]);
 }
 
-export interface Nudge { id: string; text: string; cta?: { label: string; kind: 'add' | 'progress' | 'train' | 'water'; slot?: string; workoutId?: string; title?: string; date?: string } }
+export interface Nudge { id: string; text: string; cta?: { label: string; kind: 'add' | 'progress' | 'train' | 'water' | 'summary'; slot?: string; workoutId?: string; title?: string; date?: string } }
 
 /** "דחיפות" חכמות שמוצגות במסך היום כשאתה בתוך האפליקציה */
 export function nudgesFor(s: State, now = new Date()): Nudge[] {
@@ -105,6 +111,8 @@ export function nudgesFor(s: State, now = new Date()): Nudge[] {
   if (nowMin >= 19 * 60 && info.entries.length > 0 && remP > 25) {
     out.push({ id: 'protein', text: `חסרים לך ${Math.round(remP)} ג׳ חלבון להיום`, cta: { label: 'מה לאכול', kind: 'add' } });
   }
+
+  if (nowMin >= 21 * 60 && info.entries.length > 0 && !s.summaries[today]) out.push({ id: 'summary', text: 'הסיכום של היום מוכן להפקה', cta: { label: 'סכם', kind: 'summary' } });
 
   const lastW = s.weights[s.weights.length - 1];
   if (lastW) {

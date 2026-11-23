@@ -27,7 +27,7 @@ export function defaultSettings(): Settings {
     ],
     resetHour: 0,
     cal: { enabled: false, feedId: '', alertMin: 30 },
-    remind: { v: 2, meals: { breakfast: false, lunch: false, dinner: false, snack: false }, weigh: { on: false, dow: 5, time: '09:00' }, close: { on: false, time: '21:30' }, nudges: true, status: { on: true, times: ['11:00', '14:00', '17:00', '20:00'], quiet: { from: '00:00', to: '10:00' } }, workouts: false },
+    remind: { v: 2, meals: { breakfast: false, lunch: false, dinner: false, snack: false }, weigh: { on: false, dow: 5, time: '09:00' }, close: { on: false, time: '21:30' }, nudges: true, status: { on: true, times: ['11:00', '14:00', '17:00', '20:00'], quiet: { from: '00:00', to: '10:00' } }, workouts: false, summary: { on: true, time: '21:30' } },
     ai: { provider: 'none', apiKey: '', model: '', think: 'auto', textModel: '', visionModel: '', web: false, shareData: true, memory: [] },
   };
 }
@@ -46,6 +46,7 @@ export function defaultState(): State {
     customFoods: [],
     hiddenTiles: [],
     sessions: [],
+    summaries: {},
     water: {},
     meta: { createdAt: Date.now() },
   };
@@ -73,12 +74,13 @@ function migrate(raw: any): State {
   return {
     ...base,
     ...raw,
-    settings: { ...base.settings, ...raw.settings, ai: { ...base.settings.ai, ...(raw.settings?.ai ?? {}) }, cal: { ...base.settings.cal, ...(raw.settings?.cal ?? {}) }, remind: raw.settings?.remind?.v >= 2 ? { ...base.settings.remind, ...raw.settings.remind, status: { ...base.settings.remind.status, ...(raw.settings.remind.status ?? {}) }, meals: { ...base.settings.remind.meals, ...(raw.settings?.remind?.meals ?? {}) }, weigh: { ...base.settings.remind.weigh, ...(raw.settings?.remind?.weigh ?? {}) }, close: { ...base.settings.remind.close, ...(raw.settings?.remind?.close ?? {}) } } : base.settings.remind },
+    settings: { ...base.settings, ...raw.settings, ai: { ...base.settings.ai, ...(raw.settings?.ai ?? {}) }, cal: { ...base.settings.cal, ...(raw.settings?.cal ?? {}) }, remind: raw.settings?.remind?.v >= 2 ? { ...base.settings.remind, ...raw.settings.remind, status: { ...base.settings.remind.status, ...(raw.settings.remind.status ?? {}) }, summary: { ...base.settings.remind.summary, ...(raw.settings.remind.summary ?? {}) }, meals: { ...base.settings.remind.meals, ...(raw.settings?.remind?.meals ?? {}) }, weigh: { ...base.settings.remind.weigh, ...(raw.settings?.remind?.weigh ?? {}) }, close: { ...base.settings.remind.close, ...(raw.settings?.remind?.close ?? {}) } } : base.settings.remind },
     dishes: Array.isArray(raw.dishes) ? raw.dishes : [],
     foodEdits: raw.foodEdits && typeof raw.foodEdits === 'object' ? raw.foodEdits : {},
     customFoods: Array.isArray(raw.customFoods) ? raw.customFoods : [],
     hiddenTiles: Array.isArray(raw.hiddenTiles) ? raw.hiddenTiles : [],
     sessions: Array.isArray(raw.sessions) ? raw.sessions : [],
+    summaries: raw.summaries && typeof raw.summaries === 'object' ? raw.summaries : {},
     water: raw.water && typeof raw.water === 'object' ? raw.water : {},
     meta: { ...base.meta, ...(raw.meta ?? {}) },
     schema: SCHEMA,

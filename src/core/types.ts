@@ -84,6 +84,7 @@ export interface Remind {
   /** "מצב היום": התראה עם כמה אכלת וכמה נשאר, כמה פעמים ביום (הטקסט מחושב ברגע ההתראה) */
   status: { on: boolean; times: string[]; quiet: { from: string; to: string } };
   workouts: boolean; // התראת Push לפני אימון
+  summary: { on: boolean; time: string }; // התראה לסיכום סוף יום מה-AI
 }
 
 export interface Settings {
@@ -119,6 +120,7 @@ export interface State {
   foodEdits: Record<string, FoodEdit>;
   customFoods: CustomFood[];
   sessions: Session[];
+  summaries: Record<string, { text: string; ts: number; model: string }>; // סיכומי סוף יום מה-AI לפי תאריך
   water: Record<string, number>; // מ״ל לפי תאריך
   hiddenTiles: string[]; // אריחים שהסתרת ממסך ההוספה
   meta: { createdAt: number; lastBackup?: number };

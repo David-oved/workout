@@ -302,6 +302,15 @@ function SettingsBody() {
                     </div>
                   </div>
                 )}
+                <button class="row2" onClick={() => setR({ summary: { ...r.summary, on: !r.summary.on } })}>
+                  <span>סיכום סוף יום מה-AI<small>התראה בשעה {r.summary.time}, ולחיצה עליה פותחת סיכום: אכילה, אימון, מה לשפר ומה למחר</small></span>
+                  <span class={'tgl' + (r.summary.on ? ' on' : '')} />
+                </button>
+                {r.summary.on && (
+                  <div style={{ padding: '4px 16px 14px' }}>
+                    <input class="inp num" type="time" value={r.summary.time} onChange={(e) => setR({ summary: { ...r.summary, time: nv(e) || r.summary.time } })} />
+                  </div>
+                )}
                 <button class="row2" onClick={() => setR({ workouts: !r.workouts })}>
                   <span>התראה לפני אימון<small>{set.cal.alertMin || 30} דקות לפני כל אימון מתוכנן</small></span>
                   <span class={'tgl' + (r.workouts ? ' on' : '')} />

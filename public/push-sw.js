@@ -41,6 +41,17 @@ function computeStatus(s, now) {
   return { title: title, body: body };
 }
 
+/** "סיכום היום": המספרים של היום ומצב האימון. הסיכום המלא מה-AI נפתח בלחיצה */
+function computeSummary(s, now) {
+  var reset = (s.settings && s.settings.resetHour) || 0;
+  var d = new Date((now || Date.now()) - reset * 3600000);
+  var today = d.getFullYear() + '-' + p2(d.getMonth() + 1) + '-' + p2(d.getDate());
+  var c = computeStatus(s, now);
+  var planned = (s.workouts || []).filter(function (w) { return w.date === today && w.status !== 'skipped'; });
+  var tr = planned.length ? (planned.every(function (w) { return w.status === 'done'; }) ? 'אימון: בוצע' : 'אימון: לא סומן') : 'יום מנוחה';
+  return { title: 'סיכום היום · ' + c.title, body: c.body.split(' · חלבון')[0] + ' · ' + tr + '. לחץ לסיכום מה-AI' };
+}
+
 async function showDue() {
   var items = [];
   try {
@@ -54,13 +65,14 @@ async function showDue() {
     }
   } catch (e) { /* ממשיכים להתראה כללית */ }
   var state = null;
-  if (items.some(function (i) { return i.kind === 'status'; })) {
+  if (items.some(function (i) { return i.kind === 'status' || i.kind === 'summary'; })) {
     try { state = await readState(); } catch (e) { state = null; }
   }
   items = items.map(function (i) {
-    if (i.kind !== 'status') return i;
-    if (state && state.settings) { try { var c = computeStatus(state); return { id: i.id, title: c.title, body: c.body }; } catch (e) { /* נופלים לברירת מחדל */ } }
-    return { id: i.id, title: 'מצב היום', body: 'פתח את האפליקציה לראות כמה נשאר' };
+    if (i.kind !== 'status' && i.kind !== 'summary') return i;
+    var sm = i.kind === 'summary';
+    if (state && state.settings) { try { var c = sm ? computeSummary(state) : computeStatus(state); return { id: i.id, title: c.title, body: c.body, kind: i.kind }; } catch (e) { /* נופלים לברירת מחדל */ } }
+    return { id: i.id, title: sm ? 'סיכום היום' : 'מצב היום', body: sm ? 'לחץ לסיכום מה-AI' : 'פתח את האפליקציה לראות כמה נשאר', kind: i.kind };
   });
   // iOS דורש להציג התראה על כל Push, גם אם לא הצלחנו להביא טקסט
   if (!items.length) items = [{ title: 'workOut', body: 'יש לך תזכורת' }];
@@ -71,17 +83,18 @@ async function showDue() {
       lang: 'he',
       dir: 'rtl',
       icon: 'icon-192.png',
-      data: { url: self.registration.scope },
+      data: { url: self.registration.scope + (i.kind === 'summary' ? '?summary=1' : ''), summary: i.kind === 'summary' },
     });
   }));
 }
 
 self.addEventListener('notificationclick', function (event) {
   event.notification.close();
-  var url = (event.notification.data && event.notification.data.url) || self.registration.scope;
+  var data = event.notification.data || {};
+  var url = data.url || self.registration.scope;
   event.waitUntil(
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(function (list) {
-      for (var i = 0; i < list.length; i++) if ('focus' in list[i]) return list[i].focus();
+      for (var i = 0; i < list.length; i++) if ('focus' in list[i]) { if (data.summary) list[i].postMessage({ summary: true }); return list[i].focus(); }
       return self.clients.openWindow(url);
     }),
   );

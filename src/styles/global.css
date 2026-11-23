@@ -746,3 +746,16 @@ select.inp{background-image:none}
 .tm{display:inline-flex;align-items:center;gap:4px;background:rgba(255,255,255,.07);border-radius:16px;padding:2px 4px 2px 8px}
 .tm .inp{width:96px;height:36px;padding:0 6px;background:transparent;border:0}
 .tm button{width:26px;height:26px;border-radius:50%;background:rgba(255,255,255,.1);display:flex;align-items:center;justify-content:center}
+
+/* ===== סיכום סוף יום ===== */
+.sumrow{display:flex;align-items:center;gap:12px;width:100%;padding:12px 14px;border-radius:22px;margin-top:12px;text-align:right;border:.5px solid rgba(92,225,168,.3)}
+.sumrow>svg:first-child{width:22px;height:22px;color:var(--accent);flex:none}
+.sumrow>svg:last-child{width:18px;height:18px;color:var(--mu2);flex:none}
+.sumrow .tx{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.sumrow .tx b{font-size:15px;font-weight:500}
+.sumrow .tx small{font-size:12.5px;color:var(--mu);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sm-stats{padding:14px 16px;border-radius:22px;display:flex;flex-direction:column;gap:6px;font-size:15px;margin-bottom:12px}
+.sm-note{padding:12px 14px;border-radius:20px;font-size:14px;line-height:1.5;color:var(--mu);margin-bottom:12px}
+.sm-ai{padding:14px 16px;border-radius:22px}
+.sm-h{display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--accent);margin-bottom:8px}
+.sm-h svg{width:14px;height:14px}
