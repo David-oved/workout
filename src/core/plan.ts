@@ -12,6 +12,16 @@ const NUMW: Record<string, number> = {
 };
 const numOf = (w: string): number | null => (/^\d+$/.test(w) ? Number(w) : w in NUMW ? NUMW[w] : null);
 
+/** תרגילים שנמדדים בזמן (החזקה) ולא בחזרות */
+const TIME_RE = /פלאנק|plank|תלייה|תליה|הנגה|ישיבת קיר|wall sit|הליכת (איכר|חווה)|farmer|החזק|סטטי|hollow|הולואו|l-?sit|ספלט|מתיחה|מתיחות|סירה|גשר|בלט/i;
+export const isTimeBased = (name: string) => TIME_RE.test(name);
+
+/** מתקן יחידה לפי סוג התרגיל: פלאנק ותלייה בשניות, שכיבות סמיכה ומתח בחזרות */
+export function normalizeEx(e: PlanEx): PlanEx {
+  if (isTimeBased(e.name) && e.unit === 'reps') return { ...e, unit: 'sec', reps: e.reps >= 15 ? e.reps : 45 };
+  return e;
+}
+
 const clean = (s: string) => s.replace(/[:：]+\s*$/, '').replace(/\s+/g, ' ').trim();
 
 /** שורת תרגיל: "מתח רחב: שלושה סטים של חמישה חזרות", "פלאנק שלושה סטים של דקה", "פטישים 3 סטים 10 חזרות לכל יד" */
@@ -39,7 +49,7 @@ export function parseExerciseLine(line: string, id: Id): PlanEx | null {
     }
   }
   const note = /לכל\s+(יד|רגל|צד)/.exec(line)?.[0];
-  return { id: id(), name, sets, reps: reps || 10, unit, note };
+  return normalizeEx({ id: id(), name, sets, reps: reps || 10, unit, note });
 }
 
 /**
@@ -153,7 +163,7 @@ export function planFromJson(j: any, keepName: string, id: Id): Plan | null {
       for (const e of Array.isArray(b?.exercises) ? b.exercises : []) {
         const name = String(e?.name ?? '').trim();
         if (!name) continue;
-        exercises.push({ id: id(), name, sets: Math.min(20, Math.max(1, Math.round(Number(e.sets) || 3))), reps: Math.min(600, Math.max(1, Math.round(Number(e.reps) || 10))), unit: e.unit === 'sec' ? 'sec' : 'reps', kg: Number(e.kg) > 0 ? Number(e.kg) : undefined, note: e.note ? String(e.note).slice(0, 40) : undefined });
+        exercises.push(normalizeEx({ id: id(), name, sets: Math.min(20, Math.max(1, Math.round(Number(e.sets) || 3))), reps: Math.min(600, Math.max(1, Math.round(Number(e.reps) || 10))), unit: e.unit === 'sec' ? 'sec' : 'reps', kg: Number(e.kg) > 0 ? Number(e.kg) : undefined, note: e.note ? String(e.note).slice(0, 40) : undefined }));
       }
       if (exercises.length) blocks.push({ id: id(), title: String(b?.title ?? 'תרגילים').slice(0, 60), exercises });
     }
@@ -184,4 +194,96 @@ export function cleanWeek(w: unknown, plan: Plan): WeekItem[] {
     if (Number.isInteger(dow) && dow >= 0 && dow <= 6 && day && !out.some((o) => o.dow === dow)) out.push({ dow, day: day.name });
   }
   return out.sort((a, b) => a.dow - b.dow);
+}
+
+/* ===== עריכה בפעולות: ה-AI מחזיר "מה לשנות" והאפליקציה מבצעת בדיוק, גם בתוכנית עם מאות תרגילים ===== */
+export interface ExIn { name?: string; sets?: number; reps?: number; unit?: string; kg?: number | null; note?: string | null }
+export interface Op { op: string; day?: string; block?: string; name?: string; to?: string; after?: string; fromDay?: string; toDay?: string; toBlock?: string; exercise?: ExIn; with?: ExIn; set?: ExIn; title?: string; blocks?: unknown[]; exercises?: ExIn[] }
+
+const norm = (s: unknown) => String(s ?? '').replace(/[״"׳'.,:()\-]/g, ' ').replace(/\s+/g, ' ').trim().toLowerCase();
+const same = (a: string, b: string) => { const x = norm(a), y = norm(b); return !!x && !!y && (x === y || x.includes(y) || y.includes(x)); };
+
+function mkEx(i: ExIn, id: Id, base?: PlanEx): PlanEx {
+  const e: PlanEx = {
+    id: base?.id ?? id(),
+    name: String(i.name ?? base?.name ?? 'תרגיל').slice(0, 60),
+    sets: Math.min(20, Math.max(1, Math.round(Number(i.sets ?? base?.sets ?? 3)))),
+    reps: Math.min(600, Math.max(1, Math.round(Number(i.reps ?? base?.reps ?? 10)))),
+    unit: (i.unit ?? base?.unit) === 'sec' ? 'sec' : 'reps',
+    kg: i.kg === null ? undefined : Number(i.kg ?? base?.kg) > 0 ? Number(i.kg ?? base?.kg) : undefined,
+    note: i.note === null ? undefined : (i.note ?? base?.note) ? String(i.note ?? base?.note).slice(0, 40) : undefined,
+  };
+  // אם ה-AI לא ציין יחידה מפורשת, הסוג נקבע לפי שם התרגיל
+  return i.unit === undefined && !base ? normalizeEx(e) : e;
+}
+
+/** מבצע פעולות על עותק של התוכנית. מחזיר את התוכנית החדשה ורשימה קריאה של מה שבוצע (ושל מה שלא נמצא) */
+export function applyOps(plan: Plan, ops: Op[], id: Id): { plan: Plan; log: string[] } {
+  const p: Plan = JSON.parse(JSON.stringify(plan));
+  const log: string[] = [];
+  const findDay = (n?: string) => (n ? p.days.find((d) => d.name === n) ?? p.days.find((d) => same(d.name, n)) : undefined);
+  const findEx = (name: string, dayName?: string) => {
+    const days = dayName ? [findDay(dayName)].filter(Boolean) as PlanDay[] : p.days;
+    for (const d of days) for (const b of d.blocks) {
+      const e = b.exercises.find((x) => x.name === name) ?? b.exercises.find((x) => same(x.name, name));
+      if (e) return { d, b, e };
+    }
+    return null;
+  };
+  const blockFor = (d: PlanDay, title?: string) => {
+    if (title) { const b = d.blocks.find((x) => x.title === title) ?? d.blocks.find((x) => same(x.title, title)); if (b) return b; const nb: PlanBlock = { id: id(), title: title.slice(0, 60), exercises: [] }; d.blocks.push(nb); return nb; }
+    if (!d.blocks.length) d.blocks.push({ id: id(), title: 'תרגילים', exercises: [] });
+    return d.blocks[d.blocks.length - 1];
+  };
+
+  for (const o of ops) {
+    try {
+      switch (o.op) {
+        case 'setPlanName': if (o.name) { p.name = o.name.slice(0, 40); log.push('שם התוכנית: ' + p.name); } break;
+        case 'addDay': {
+          const name = String(o.name ?? o.day ?? 'יום חדש').slice(0, 40);
+          const blocks: PlanBlock[] = [];
+          const src = (Array.isArray(o.blocks) ? o.blocks : []) as { title?: string; exercises?: ExIn[] }[];
+          for (const b of src) blocks.push({ id: id(), title: String(b.title ?? 'תרגילים').slice(0, 60), exercises: (b.exercises ?? []).filter((e) => e?.name).map((e) => mkEx(e, id)) });
+          p.days.push({ id: id(), name, blocks });
+          log.push(`נוסף יום: ${name}`);
+          break;
+        }
+        case 'removeDay': { const d = findDay(o.day); if (d) { p.days = p.days.filter((x) => x !== d); log.push(`הוסר יום: ${d.name}`); } else log.push(`לא נמצא יום: ${o.day}`); break; }
+        case 'renameDay': { const d = findDay(o.day); if (d && o.to) { log.push(`${d.name} ← ${o.to}`); d.name = o.to.slice(0, 40); } break; }
+        case 'addBlock': { const d = findDay(o.day); if (d) { d.blocks.push({ id: id(), title: String(o.title ?? 'קבוצה').slice(0, 60), exercises: (o.exercises ?? []).filter((e) => e?.name).map((e) => mkEx(e, id)) }); log.push(`נוספה קבוצה ${o.title} ל${d.name}`); } break; }
+        case 'removeBlock': { const d = findDay(o.day); const b = d?.blocks.find((x) => same(x.title, String(o.block ?? o.title ?? ''))); if (d && b) { d.blocks = d.blocks.filter((x) => x !== b); log.push(`הוסרה קבוצה ${b.title}`); } break; }
+        case 'addExercise': {
+          const d = findDay(o.day) ?? p.days[0];
+          if (!d || !o.exercise?.name) break;
+          const b = blockFor(d, o.block);
+          const e = mkEx(o.exercise, id);
+          const at = o.after ? b.exercises.findIndex((x) => same(x.name, o.after!)) : -1;
+          if (at >= 0) b.exercises.splice(at + 1, 0, e); else b.exercises.push(e);
+          log.push(`נוסף: ${e.name} (${exLabel(e)}) ל${d.name}`);
+          break;
+        }
+        case 'removeExercise': { const f = findEx(String(o.name ?? ''), o.day); if (f) { f.b.exercises = f.b.exercises.filter((x) => x !== f.e); log.push(`הוסר: ${f.e.name}`); } else log.push(`לא נמצא תרגיל: ${o.name}`); break; }
+        case 'updateExercise': { const f = findEx(String(o.name ?? ''), o.day); if (f && o.set) { const n = mkEx(o.set, id, f.e); f.b.exercises = f.b.exercises.map((x) => (x === f.e ? n : x)); log.push(`עודכן: ${n.name} (${exLabel(n)})`); } else log.push(`לא נמצא תרגיל: ${o.name}`); break; }
+        case 'replaceExercise': { const f = findEx(String(o.name ?? ''), o.day); if (f && o.with) { const n = mkEx(o.with, id, undefined); f.b.exercises = f.b.exercises.map((x) => (x === f.e ? n : x)); log.push(`${f.e.name} הוחלף ב-${n.name} (${exLabel(n)})`); } else log.push(`לא נמצא תרגיל: ${o.name}`); break; }
+        case 'moveExercise': {
+          const f = findEx(String(o.name ?? ''), o.fromDay);
+          const to = findDay(o.toDay ?? o.day);
+          if (f && to) { f.b.exercises = f.b.exercises.filter((x) => x !== f.e); blockFor(to, o.toBlock ?? o.block).exercises.push(f.e); log.push(`${f.e.name} הועבר ל${to.name}`); }
+          break;
+        }
+        default: break;
+      }
+    } catch { /* פעולה שגויה: מדלגים */ }
+  }
+  p.days.forEach((d) => { d.blocks = d.blocks.filter((b) => b.exercises.length > 0); });
+  p.days = p.days.filter((d) => d.blocks.length > 0 || ops.some((o) => o.op === 'addDay'));
+  return { plan: p, log };
+}
+
+/** האם ההודעה נראית כמו תוכנית שלמה שהודבקה (מנתחים מקומית, בלי AI) */
+export function looksLikePlan(text: string, id: Id): Plan | null {
+  const p = parsePlanText(text, id);
+  const n = p.days.reduce((a, d) => a + d.blocks.reduce((b, x) => b + x.exercises.length, 0), 0);
+  return n >= 3 ? p : null;
 }

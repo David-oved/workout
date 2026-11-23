@@ -825,3 +825,15 @@ select.inp{background-image:none}
 .pc-ok svg{width:16px;height:16px}
 .pc-body .msg .mcol{max-width:96%}
 .pc-in{position:absolute;left:14px;right:14px;bottom:max(14px,env(safe-area-inset-bottom));z-index:5}
+
+.pc-in .as-in{height:auto;min-height:58px;align-items:flex-end;padding:6px 8px 6px 16px}
+.as-in textarea{flex:1;min-width:0;background:none;border:0;outline:none;font-size:17px;line-height:1.4;resize:none;padding:10px 0;max-height:130px;text-align:right;color:var(--tx);font-family:inherit}
+.as-in>svg{margin-bottom:14px}
+.pc-dd{border-top:.5px solid var(--line);padding:2px 0}
+.pc-dd:first-of-type{border-top:0}
+.pc-bl{padding:2px 0 8px}
+.pc-bt{font-size:12px;margin:6px 0 2px}
+.pc-ex{display:flex;justify-content:space-between;gap:10px;font-size:13.5px;padding:3px 0}
+.pc-ex span:last-child{color:var(--mu);white-space:nowrap}
+.pc-log{display:flex;flex-direction:column;gap:3px;margin:6px 6px 0;font-size:12px;color:var(--accent)}
+.pc-log span::before{content:"✓ "}

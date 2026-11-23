@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from 'preact/hooks';
 import { ArrowUp, Check, ChevronDown, ChevronRight, MessageSquarePlus, Sparkles } from 'lucide-preact';
 import { DAY_NAMES, DAY_SHORT } from '../core/dates';
 import { exLabel, type WeekItem } from '../core/plan';
-import { applyProposal, planChat, resetPlanChat, sendPlanMessage, type PMsg } from '../ai/planchat';
+import { applyDraft, planChat, resetPlanChat, sendPlanMessage } from '../ai/planchat';
+import { aiState } from '../ai/gemini';
 import type { Plan } from '../core/types';
 
 /** כרטיסיית החלוקה השבועית: איזה יום בתוכנית באיזה יום בשבוע, ומה נעשה בו */
@@ -35,30 +36,41 @@ export function WeekCard({ week, plan, title = 'החלוקה השבועית' }: 
   );
 }
 
-const STARTERS = ['אני מתאמן 3 פעמים בשבוע, אסביר לך מה בכל יום', 'יש לי כבר תוכנית ורוצה לשפר אותה', 'תבנה לי תוכנית מאפס'];
+const STARTERS = ['הדבק כאן את התוכנית שלך ואני אבדוק אותה', 'אני מתאמן 3 פעמים בשבוע, אסביר לך מה בכל יום', 'תשלים לי את התרגילים לפי קבוצות שרירים'];
 
-function Proposal({ m }: { m: PMsg }) {
-  const [open, setOpen] = useState(false);
-  if (!m.plan) return null;
+/** הטיוטה החיה: החלוקה השבועית, כל הימים והתרגילים שבתוכם (עם סוג כל תרגיל), ואישור */
+function Draft() {
+  const { draft, week } = planChat.use((x) => x);
+  const [openDay, setOpenDay] = useState<string | null>(null);
+  if (!draft || !draft.days.length) return null;
+  const total = draft.days.reduce((a, d) => a + d.blocks.reduce((b, x) => b + x.exercises.length, 0), 0);
   return (
     <div class="pc-prop">
-      {m.week && m.week.length > 0 && <WeekCard week={m.week} plan={m.plan} title="ככה זה ייראה" />}
+      {week.length > 0 && <WeekCard week={week} plan={draft} title="ככה זה ייראה" />}
       <div class="g pl-prev">
-        <button class="pc-more" onClick={() => setOpen((v) => !v)}>
-          <span>{m.plan.name} · {m.plan.days.length} ימים · {m.plan.days.reduce((a, d) => a + d.blocks.reduce((b, x) => b + x.exercises.length, 0), 0)} תרגילים</span>
-          <ChevronDown class={open ? 'flip' : ''} />
-        </button>
-        {open && m.plan.days.map((d) => (
-          <div key={d.id}><b>{d.name}</b>{d.blocks.map((b) => <div class="mu pl-pl" key={b.id}>{b.title}: {b.exercises.map((e) => `${e.name} ${exLabel(e)}`).join(' · ')}</div>)}</div>
-        ))}
-        {m.applied ? (
-          <div class="pc-ok"><Check />הוחל</div>
-        ) : (
-          <>
-            <button class="btn primary block" style={{ marginTop: 10 }} onClick={() => applyProposal(m)}><Check />אשר והחל</button>
-            <div class="mu" style={{ fontSize: 12, marginTop: 6, lineHeight: 1.5 }}>זה יחליף את התוכנית ואת ימי האימון הקבועים שלך. אפשר לבטל אחרי. או שאפשר להמשיך לשוחח ולשנות.</div>
-          </>
-        )}
+        <div class="pl-pt">{draft.name} · {draft.days.length} ימים · {total} תרגילים</div>
+        {draft.days.map((d) => {
+          const n = d.blocks.reduce((a, b) => a + b.exercises.length, 0);
+          const open = openDay === d.id;
+          return (
+            <div class="pc-dd" key={d.id}>
+              <button class="pc-more" onClick={() => setOpenDay(open ? null : d.id)}>
+                <span><b>{d.name}</b> <span class="mu num">{n} תרגילים</span></span>
+                <ChevronDown class={open ? 'flip' : ''} />
+              </button>
+              {open && d.blocks.map((b) => (
+                <div class="pc-bl" key={b.id}>
+                  <div class="mu pc-bt">{b.title}</div>
+                  {b.exercises.map((e) => (
+                    <div class="pc-ex" key={e.id}><span>{e.name}</span><span class="num">{exLabel(e)}{e.unit === 'sec' ? ' ⏱' : ''}</span></div>
+                  ))}
+                </div>
+              ))}
+            </div>
+          );
+        })}
+        <button class="btn primary block" style={{ marginTop: 12 }} onClick={applyDraft}><Check />אשר והחל</button>
+        <div class="mu" style={{ fontSize: 12, marginTop: 6, lineHeight: 1.5 }}>זה יחליף את התוכנית ואת ימי האימון הקבועים שלך, ואפשר לבטל אחרי. אפשר להמשיך לשוחח ולשנות לפני.</div>
       </div>
     </div>
   );
@@ -66,11 +78,11 @@ function Proposal({ m }: { m: PMsg }) {
 
 export function PlanChat({ onBack }: { onBack: () => void }) {
   const st = planChat.use((x) => x);
+  const aiOn = aiState.use((x) => x.configured);
   const [q, setQ] = useState('');
   const body = useRef<HTMLDivElement>(null);
-  useEffect(() => { setTimeout(() => { const b = body.current; if (b) b.scrollTo({ top: b.scrollHeight, behavior: 'smooth' }); }, 80); }, [st.messages.length, st.busy]);
-  const send = (t?: string) => { const v = (t ?? q).trim(); if (!v) return; setQ(''); void sendPlanMessage(v); };
-  const last = [...st.messages].reverse().find((m) => m.role === 'ai');
+  useEffect(() => { setTimeout(() => { const b = body.current; if (b) b.scrollTo({ top: b.scrollHeight, behavior: 'smooth' }); }, 80); }, [st.messages.length, st.busy, st.draftAt]);
+  const send = (t?: string) => { const v = (t ?? q).trim(); if (!v) return; setQ(''); const ta = document.querySelector('.pc-in textarea') as HTMLTextAreaElement | null; if (ta) ta.style.height = 'auto'; void sendPlanMessage(v); };
 
   return (
     <>
@@ -83,28 +95,31 @@ export function PlanChat({ onBack }: { onBack: () => void }) {
           <div class="aiempty" style={{ paddingTop: 6 }}>
             <div class="aiorb"><Sparkles /></div>
             <div style={{ fontSize: 18, fontWeight: 600, margin: '10px 0 4px' }}>בוא נבנה את התוכנית יחד</div>
-            <div class="mu" style={{ lineHeight: 1.6 }}>ספר לי איך אתה מתאמן: כמה ימים בשבוע, איפה, ומה בכל יום. אני אשאל מה שחסר, ובסוף תראה כרטיסייה של החלוקה השבועית ותחליט.</div>
+            <div class="mu" style={{ lineHeight: 1.6 }}>אפשר להדביק תוכנית שלמה (גם של מאות תרגילים) והיא תיקלט עם כל התרגילים, או לספר לי בחופשיות איך אתה מתאמן. אני יודע מה נמדד בחזרות ומה בזמן (פלאנק, תלייה), ואפשר לבקש שאשלים תרגילים, אחליף או אשנה. בסוף תראה חלוקה שבועית ותחליט.</div>
+            {!aiOn && <div class="mu" style={{ marginTop: 8, fontSize: 13 }}>בלי חיבור ל-AI אפשר להדביק תוכנית והיא תיקלט מקומית.</div>}
             <div class="sugg">
-              {STARTERS.map((t) => <button class="chip" style={{ flex: 'none', whiteSpace: 'normal', height: 'auto', padding: '9px 14px', textAlign: 'right', borderRadius: 16 }} onClick={() => send(t)}>{t}</button>)}
+              {STARTERS.map((t) => <button class="chip" style={{ flex: 'none', whiteSpace: 'normal', height: 'auto', padding: '9px 14px', textAlign: 'right', borderRadius: 16 }} onClick={() => { if (t.startsWith('הדבק')) { const i = document.querySelector('.pc-in textarea') as HTMLTextAreaElement | null; i?.focus(); } else send(t); }}>{t}</button>)}
             </div>
           </div>
         )}
         {st.messages.map((m) => (
-          <div class={'msg ' + (m.role === 'user' ? 'u' : 'a')} key={m.id}>
-            <div class="mcol">
-              <div class={'mb' + (m.role === 'ai' ? ' md' : '')}>{m.text}</div>
-              {m.role === 'ai' && <Proposal m={m} />}
+          <div key={m.id}>
+            <div class={'msg ' + (m.role === 'user' ? 'u' : 'a')}>
+              <div class="mcol">
+                <div class={'mb' + (m.role === 'ai' ? ' md' : '')} style={{ whiteSpace: 'pre-wrap', maxHeight: m.role === 'user' ? 140 : undefined, overflow: m.role === 'user' ? 'hidden' : undefined }}>{m.text}</div>
+                {m.log && <div class="pc-log">{m.log.slice(0, 8).map((l, i) => <span key={i}>{l}</span>)}{m.log.length > 8 && <span>ועוד {m.log.length - 8} שינויים</span>}</div>}
+              </div>
             </div>
+            {st.draftAt === m.id && <Draft />}
           </div>
         ))}
         {st.busy && <div class="stage" aria-live="polite"><span class="sdots"><i /><i /><i /></span><span class="stg">חושב על התוכנית…</span></div>}
-        {st.error && <div class="aerr">{st.error} <button onClick={() => { const u = [...st.messages].reverse().find((m) => m.role === 'user'); if (u) void sendPlanMessage(u.text); }}>נסה שוב</button></div>}
-        {!st.busy && last && !last.plan && st.messages.length > 0 && <div class="mu" style={{ fontSize: 12, textAlign: 'center', marginTop: 6 }}>כשיהיה לי מספיק מידע אציע תוכנית וחלוקה שבועית</div>}
+        {st.error && <div class="aerr">{st.error} <button onClick={() => { const u = [...st.messages].reverse().find((m) => m.role === 'user'); if (u) { planChat.set((s) => ({ ...s, messages: s.messages.filter((m) => m.id !== u.id) })); void sendPlanMessage(u.text); } }}>נסה שוב</button></div>}
       </div>
       <div class="pc-in">
         <div class="g as-in" style={{ margin: 0 }}>
           <Sparkles />
-          <input value={q} placeholder="ספר לי על האימונים שלך…" enterkeyhint="send" autocomplete="off" onInput={(e) => setQ((e.target as HTMLInputElement).value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); send(); } }} />
+          <textarea rows={1} value={q} placeholder="ספר לי, או הדבק את התוכנית…" onInput={(e) => { const el = e.target as HTMLTextAreaElement; setQ(el.value); el.style.height = 'auto'; el.style.height = Math.min(el.scrollHeight, 130) + 'px'; }} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey && !q.includes('\n')) { e.preventDefault(); send(); } }} />
           {q.trim() && <button class="ic go" aria-label="שלח" onClick={() => send()}><ArrowUp /></button>}
         </div>
       </div>

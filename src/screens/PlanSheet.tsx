@@ -6,7 +6,7 @@ import { DAY_NAMES, uid } from '../core/dates';
 import { ui, setUi, toast } from '../ui/ui';
 import { BigSheet, Sheet } from '../ui/components';
 import { aiState, chatTurn } from '../ai/gemini';
-import { exLabel, parseJsonLoose as parseJson, parsePlanText, planFromJson, planToText, weekFromRoutine } from '../core/plan';
+import { exLabel, isTimeBased, parseJsonLoose as parseJson, parsePlanText, planFromJson, planToText, weekFromRoutine } from '../core/plan';
 import { PlanChat, WeekCard } from './PlanChat';
 import { AmtInput } from './FoodPicker';
 import type { Plan, PlanBlock, PlanDay, PlanEx } from '../core/types';
@@ -183,7 +183,7 @@ export function PlanSheet() {
                 {b.exercises.map((e, ei) => (
                   <div class="pl-ex" key={e.id}>
                     <div class="pl-eh">
-                      <input class="inp" value={e.name} aria-label="שם התרגיל" onChange={(ev) => updEx(b.id, e.id, { name: nv(ev) || e.name })} />
+                      <input class="inp" value={e.name} aria-label="שם התרגיל" onChange={(ev) => { const nm = nv(ev) || e.name; updEx(b.id, e.id, isTimeBased(nm) && e.unit === 'reps' ? { name: nm, unit: 'sec', reps: 45 } : { name: nm }); }} />
                       <button class="as-rm" aria-label="למעלה" onClick={() => updBlock(b.id, (x) => ({ ...x, exercises: move(x.exercises, ei, -1) }))}><ChevronUp /></button>
                       <button class="as-rm" aria-label="למטה" onClick={() => updBlock(b.id, (x) => ({ ...x, exercises: move(x.exercises, ei, 1) }))}><ChevronDown /></button>
                       <button class="as-rm" aria-label="מחק תרגיל" onClick={() => updBlock(b.id, (x) => ({ ...x, exercises: x.exercises.filter((y) => y.id !== e.id) }))}><X /></button>
