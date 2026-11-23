@@ -6,7 +6,8 @@ import { DAY_NAMES, uid } from '../core/dates';
 import { ui, setUi, toast } from '../ui/ui';
 import { BigSheet, Sheet } from '../ui/components';
 import { aiState, chatTurn } from '../ai/gemini';
-import { exLabel, parsePlanText, planToText } from '../core/plan';
+import { exLabel, parseJsonLoose as parseJson, parsePlanText, planFromJson, planToText, weekFromRoutine } from '../core/plan';
+import { PlanChat, WeekCard } from './PlanChat';
 import { AmtInput } from './FoodPicker';
 import type { Plan, PlanBlock, PlanDay, PlanEx } from '../core/types';
 
@@ -20,30 +21,6 @@ unit "sec" means reps is seconds (for example a plank of one minute is reps 60).
 const IMPORT_SYS = `You convert a workout plan written in free Hebrew text into JSON. Keep the days, groups and exercises exactly as written, in Hebrew. Return ONE JSON object only: {"summary":"one short Hebrew sentence","plan":{"name":string,"days":[{"name":string,"blocks":[{"title":string,"exercises":[{"name":string,"sets":number,"reps":number,"unit":"reps"|"sec","kg":number optional,"note":string optional}]}]}]}}
 Words like "שלושה" are numbers (3). "של דקה" is unit sec with reps 60. "לכל יד" goes to note.`;
 
-function toPlan(j: any, keepName: string): Plan | null {
-  const days: PlanDay[] = [];
-  for (const d of Array.isArray(j?.plan?.days) ? j.plan.days : []) {
-    const blocks: PlanBlock[] = [];
-    for (const b of Array.isArray(d?.blocks) ? d.blocks : []) {
-      const exercises: PlanEx[] = [];
-      for (const e of Array.isArray(b?.exercises) ? b.exercises : []) {
-        const name = String(e?.name ?? '').trim();
-        if (!name) continue;
-        exercises.push({ id: uid(), name, sets: Math.min(20, Math.max(1, Math.round(Number(e.sets) || 3))), reps: Math.min(600, Math.max(1, Math.round(Number(e.reps) || 10))), unit: e.unit === 'sec' ? 'sec' : 'reps', kg: Number(e.kg) > 0 ? Number(e.kg) : undefined, note: e.note ? String(e.note).slice(0, 40) : undefined });
-      }
-      if (exercises.length) blocks.push({ id: uid(), title: String(b?.title ?? 'תרגילים').slice(0, 60), exercises });
-    }
-    if (blocks.length) days.push({ id: uid(), name: String(d?.name ?? 'יום אימון').slice(0, 40), blocks });
-  }
-  return days.length ? { id: uid(), name: String(j?.plan?.name ?? keepName).slice(0, 40), days, ts: Date.now() } : null;
-}
-function parseJson(raw: string): any {
-  const t = raw.replace(/```(?:json)?/gi, '').trim();
-  const a = t.indexOf('{'), b = t.lastIndexOf('}');
-  if (a < 0 || b <= a) throw new Error('התשובה לא הייתה JSON');
-  return JSON.parse(t.slice(a, b + 1));
-}
-
 /** תוכנית האימונים: ימים, בלוקים ותרגילים עם עריכה חכמה (ידנית, מטקסט, או בעזרת AI) */
 export function PlanSheet() {
   const st = ui.use((u) => u.plan);
@@ -53,6 +30,7 @@ export function PlanSheet() {
   if (st) last.current = st;
   const [dayId, setDayId] = useState<string | null>(null);
   const [sheet, setSheet] = useState<null | 'import' | 'ai' | 'week'>(null);
+  const [chat, setChat] = useState(false);
   const [txt, setTxt] = useState('');
   const [prev, setPrev] = useState<Plan | null>(null);
   const [instr, setInstr] = useState('');
@@ -65,7 +43,7 @@ export function PlanSheet() {
 
   const plan = s.plans.find((p) => p.id === s.activePlan) ?? s.plans[0];
   const day = plan?.days.find((d) => d.id === dayId);
-  const close = () => { setUi({ plan: null }); setSheet(null); setOpenedFor(null); };
+  const close = () => { setUi({ plan: null }); setSheet(null); setOpenedFor(null); setChat(false); };
 
   const upd = (fn: (p: Plan) => Plan) => { if (plan) actions.savePlan(fn(plan)); };
   const updDay = (fn: (d: PlanDay) => PlanDay) => upd((p) => ({ ...p, days: p.days.map((d) => (d.id === dayId ? fn(d) : d)) }));
@@ -84,7 +62,7 @@ export function PlanSheet() {
     setBusy(true); setErr('');
     try {
       const r = await chatTurn([{ role: 'user', text: txt }], { system: IMPORT_SYS, raw: true, web: false, deep: false, onStage: () => undefined });
-      const p = toPlan(parseJson(r.reply), 'התוכנית שלי');
+      const p = planFromJson(parseJson(r.reply), 'התוכנית שלי', uid);
       if (!p) throw new Error('ה-AI לא החזיר תוכנית שימושית');
       setPrev(p);
     } catch (e) { setErr((e as Error).message); }
@@ -104,7 +82,7 @@ export function PlanSheet() {
       const cur = JSON.stringify({ name: plan.name, days: plan.days.map((d) => ({ name: d.name, blocks: d.blocks.map((b) => ({ title: b.title, exercises: b.exercises.map(({ id: _i, ...e }) => e) })) })) });
       const r = await chatTurn([{ role: 'user', text: `CURRENT PLAN:\n${cur}\n\nINSTRUCTION:\n${instr}` }], { system: PLAN_SYS, raw: true, web: false, deep: false, onStage: () => undefined });
       const j = parseJson(r.reply);
-      const p = toPlan(j, plan.name);
+      const p = planFromJson(j, plan.name, uid);
       if (!p) throw new Error('ה-AI לא החזיר תוכנית שימושית');
       setPrev(p); setAiSum(String(j.summary ?? ''));
     } catch (e) { setErr((e as Error).message); }
@@ -136,7 +114,7 @@ export function PlanSheet() {
 
   return (
     <BigSheet open={!!st} onClose={close}>
-      <div class="as-top">
+      <div class="as-top" style={chat ? { display: 'none' } : undefined}>
         <div>
           {day && <button class="as-back" style={{ margin: '0 0 6px' }} onClick={() => setDayId(null)}><ChevronRight size={16} />כל הימים</button>}
           <div class="as-ti" style={{ fontSize: 26 }}>{day ? day.name : 'תוכנית אימונים'}</div>
@@ -145,7 +123,8 @@ export function PlanSheet() {
         <button class="as-x" aria-label="סגור" onClick={close}><X /></button>
       </div>
 
-      <div class="as-body" style={{ paddingBottom: 40 }}>
+      {chat && <PlanChat onBack={() => setChat(false)} />}
+      <div class="as-body" style={{ paddingBottom: 40, display: chat ? 'none' : undefined }}>
         {!day && (
           <>
             {!plan && (
@@ -155,6 +134,13 @@ export function PlanSheet() {
                 <span>אפשר להדביק תוכנית שכתבת בטקסט חופשי, לבנות ידנית, או לבקש מה-AI לערוך. הכל נשמר רק במכשיר שלך.</span>
               </div>
             )}
+            {aiOn && (
+              <button class="g pl-chatbtn" onClick={() => setChat(true)}>
+                <Sparkles />
+                <span class="tx"><b>שוחח עם ה-AI על התוכנית</b><small>תסביר איך אתה מתאמן, ובסוף תראה את החלוקה השבועית ותחליט</small></span>
+              </button>
+            )}
+            {plan && weekFromRoutine(s.settings.routine, plan).length > 0 && <WeekCard week={weekFromRoutine(s.settings.routine, plan)} plan={plan} />}
             {plan?.days.map((d) => (
               <button class="g pl-day" key={d.id} onClick={() => setDayId(d.id)}>
                 <b>{d.name}</b>

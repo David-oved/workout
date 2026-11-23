@@ -139,3 +139,49 @@ export function progressionFor(ex: PlanEx, sessions: Session[]): Progress | null
   if (ex.reps < 15) return { text: `עמדת בכל הסטים. אפשר ${ex.sets}×${ex.reps + 1}`, next: { reps: ex.reps + 1 } };
   return { text: `עמדת בכל הסטים עם ${ex.reps}. אפשר סט נוסף או גרסה קשה יותר`, next: { sets: ex.sets + 1 } };
 }
+
+export interface WeekItem { dow: number; day: string }
+
+/** ממיר JSON של תוכנית (מה-AI) לתוכנית תקינה עם מזהים, ומסנן ערכים לא הגיוניים */
+export function planFromJson(j: any, keepName: string, id: Id): Plan | null {
+  const src = j?.plan ?? j;
+  const days: PlanDay[] = [];
+  for (const d of Array.isArray(src?.days) ? src.days : []) {
+    const blocks: PlanBlock[] = [];
+    for (const b of Array.isArray(d?.blocks) ? d.blocks : []) {
+      const exercises: PlanEx[] = [];
+      for (const e of Array.isArray(b?.exercises) ? b.exercises : []) {
+        const name = String(e?.name ?? '').trim();
+        if (!name) continue;
+        exercises.push({ id: id(), name, sets: Math.min(20, Math.max(1, Math.round(Number(e.sets) || 3))), reps: Math.min(600, Math.max(1, Math.round(Number(e.reps) || 10))), unit: e.unit === 'sec' ? 'sec' : 'reps', kg: Number(e.kg) > 0 ? Number(e.kg) : undefined, note: e.note ? String(e.note).slice(0, 40) : undefined });
+      }
+      if (exercises.length) blocks.push({ id: id(), title: String(b?.title ?? 'תרגילים').slice(0, 60), exercises });
+    }
+    if (blocks.length) days.push({ id: id(), name: String(d?.name ?? 'יום אימון').slice(0, 40), blocks });
+  }
+  return days.length ? { id: id(), name: String(src?.name ?? keepName).slice(0, 40), days, ts: Date.now() } : null;
+}
+
+export function parseJsonLoose(raw: string): any {
+  const t = raw.replace(/```(?:json)?/gi, '').trim();
+  const a = t.indexOf('{'), b = t.lastIndexOf('}');
+  if (a < 0 || b <= a) throw new Error('התשובה לא הייתה JSON');
+  return JSON.parse(t.slice(a, b + 1));
+}
+
+/** חלוקה שבועית מתוך ימי האימון הקבועים: איזה יום בתוכנית באיזה יום בשבוע */
+export function weekFromRoutine(routine: { dow: number; title: string }[], plan: Plan | undefined): WeekItem[] {
+  if (!plan) return [];
+  return routine.filter((r) => plan.days.some((d) => d.name === r.title)).map((r) => ({ dow: r.dow, day: r.title })).sort((a, b) => a.dow - b.dow);
+}
+
+export function cleanWeek(w: unknown, plan: Plan): WeekItem[] {
+  if (!Array.isArray(w)) return [];
+  const out: WeekItem[] = [];
+  for (const x of w as { dow?: unknown; day?: unknown }[]) {
+    const dow = Number(x?.dow);
+    const day = plan.days.find((d) => d.name === String(x?.day ?? ''));
+    if (Number.isInteger(dow) && dow >= 0 && dow <= 6 && day && !out.some((o) => o.dow === dow)) out.push({ dow, day: day.name });
+  }
+  return out.sort((a, b) => a.dow - b.dow);
+}
