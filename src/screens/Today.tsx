@@ -183,7 +183,8 @@ export function TodayScreen() {
                 <span class="num">{Math.abs(rem)}</span>
               </Ring>
               <div style={{ fontSize: 14 }}>{m.name}</div>
-              <div class="mu">{rem < 0 ? 'מעל היעד' : `מתוך ${target[m.k]} ג׳`}</div>
+              <div class="ate num"><b style={{ color: m.color }}>{eaten[m.k]}</b> ג׳ אכלתי</div>
+              <div class="mu">{rem < 0 ? `מעל היעד (${target[m.k]})` : `מתוך ${target[m.k]} ג׳`}</div>
             </div>
           );
         })}

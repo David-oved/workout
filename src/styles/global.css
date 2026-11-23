@@ -739,3 +739,6 @@ select.inp{background-image:none}
 .nudge .go{height:32px;padding:0 14px;border-radius:16px;background:var(--accent);color:var(--accent-d);font-size:13px;font-weight:600;flex:none}
 .nudge .x{width:28px;height:28px;border-radius:50%;background:rgba(255,255,255,.08);display:flex;align-items:center;justify-content:center;flex:none}
 .nudge .x svg{width:13px;height:13px}
+
+.mc .ate{font-size:13.5px;margin-top:2px}
+.mc .ate b{font-weight:600}
