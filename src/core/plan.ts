@@ -150,7 +150,7 @@ export function progressionFor(ex: PlanEx, sessions: Session[]): Progress | null
   return { text: `עמדת בכל הסטים עם ${ex.reps}. אפשר סט נוסף או גרסה קשה יותר`, next: { sets: ex.sets + 1 } };
 }
 
-export interface WeekItem { dow: number; day: string }
+export interface WeekItem { dow: number; day: string; time?: string }
 
 /** ממיר JSON של תוכנית (מה-AI) לתוכנית תקינה עם מזהים, ומסנן ערכים לא הגיוניים */
 export function planFromJson(j: any, keepName: string, id: Id): Plan | null {
@@ -180,9 +180,9 @@ export function parseJsonLoose(raw: string): any {
 }
 
 /** חלוקה שבועית מתוך ימי האימון הקבועים: איזה יום בתוכנית באיזה יום בשבוע */
-export function weekFromRoutine(routine: { dow: number; title: string }[], plan: Plan | undefined): WeekItem[] {
+export function weekFromRoutine(routine: { dow: number; title: string; time?: string }[], plan: Plan | undefined): WeekItem[] {
   if (!plan) return [];
-  return routine.filter((r) => plan.days.some((d) => d.name === r.title)).map((r) => ({ dow: r.dow, day: r.title })).sort((a, b) => a.dow - b.dow);
+  return routine.filter((r) => plan.days.some((d) => d.name === r.title)).map((r) => ({ dow: r.dow, day: r.title, time: r.time })).sort((a, b) => a.dow - b.dow);
 }
 
 export function cleanWeek(w: unknown, plan: Plan): WeekItem[] {
@@ -191,7 +191,8 @@ export function cleanWeek(w: unknown, plan: Plan): WeekItem[] {
   for (const x of w as { dow?: unknown; day?: unknown }[]) {
     const dow = Number(x?.dow);
     const day = plan.days.find((d) => d.name === String(x?.day ?? ''));
-    if (Number.isInteger(dow) && dow >= 0 && dow <= 6 && day && !out.some((o) => o.dow === dow)) out.push({ dow, day: day.name });
+    const time = typeof (x as { time?: unknown }).time === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test((x as { time: string }).time) ? (x as { time: string }).time : undefined;
+    if (Number.isInteger(dow) && dow >= 0 && dow <= 6 && day && !out.some((o) => o.dow === dow)) out.push({ dow, day: day.name, time });
   }
   return out.sort((a, b) => a.dow - b.dow);
 }

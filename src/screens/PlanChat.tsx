@@ -9,6 +9,7 @@ import type { Plan } from '../core/types';
 /** כרטיסיית החלוקה השבועית: איזה יום בתוכנית באיזה יום בשבוע, ומה נעשה בו */
 export function WeekCard({ week, plan, title = 'החלוקה השבועית' }: { week: WeekItem[]; plan: Plan | undefined; title?: string }) {
   const by = new Map(week.map((w) => [w.dow, w.day] as const));
+  const times = new Map(week.map((w) => [w.dow, w.time] as const));
   const groups = (name: string) => {
     const d = plan?.days.find((x) => x.name === name);
     return d ? [...new Set(d.blocks.map((b) => b.title.split(' · ').pop()!))].slice(0, 3) : [];
@@ -25,6 +26,7 @@ export function WeekCard({ week, plan, title = 'החלוקה השבועית' }: 
               {day ? (
                 <>
                   <b>{day.replace(/^יום\s+/, '')}</b>
+                  {times.get(i) && <small class="num wkc-t">{times.get(i)}</small>}
                   {groups(day).map((g) => <small key={g}>{g}</small>)}
                 </>
               ) : <small class="r">מנוחה</small>}

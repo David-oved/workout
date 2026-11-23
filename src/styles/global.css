@@ -837,3 +837,4 @@ select.inp{background-image:none}
 .pc-ex span:last-child{color:var(--mu);white-space:nowrap}
 .pc-log{display:flex;flex-direction:column;gap:3px;margin:6px 6px 0;font-size:12px;color:var(--accent)}
 .pc-log span::before{content:"✓ "}
+.wkc-t{color:var(--accent);font-size:10.5px}
