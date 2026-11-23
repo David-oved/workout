@@ -74,6 +74,9 @@ export interface Weigh { date: string; kg: number }
 
 export interface Profile { age: number; heightCm: number; weightKg: number; goalKg: number; pace: 'slow' | 'mid' | 'fast' }
 
+/** תזכורות: ארוחות לפי שעות הארוחות, שקילה שבועית, סגירת יום, ו"דחיפות" בתוך האפליקציה */
+export interface Remind { meals: Record<string, boolean>; weigh: { on: boolean; dow: number; time: string }; close: { on: boolean; time: string }; nudges: boolean }
+
 export interface Settings {
   profile: Profile;
   targets: Record<TargetKey, Macros>;
@@ -82,6 +85,7 @@ export interface Settings {
   routine: Routine[];
   resetHour: number;
   cal: { enabled: boolean; feedId: string; alertMin: number };
+  remind: Remind;
   ai: {
     provider: 'none' | 'gemini' | 'groq' | 'claude';
     apiKey: string;

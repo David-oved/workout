@@ -37,6 +37,7 @@ function doGet(e) {
     if (p.action === 'ping') {
       return out({
         ok: true,
+        v: 2,
         tz: Session.getScriptTimeZone(),
         calendars: CalendarApp.getAllCalendars().map(function (c) { return c.getName(); }),
       });
@@ -117,10 +118,12 @@ function syncWorkouts(b) {
         updated++;
       }
     }
+    // לכל פריט אפשר התראה משלו (תזכורות: בדיוק בשעה), אחרת ההתראה הכללית של האימונים
+    const itemWant = typeof w.alertMin === 'number' ? (w.alertMin >= 0 ? [w.alertMin] : []) : want;
     const cur = ev.getPopupReminders();
-    if (cur.length !== want.length || (want.length && cur[0] !== want[0])) {
+    if (cur.length !== itemWant.length || (itemWant.length && cur[0] !== itemWant[0])) {
       ev.removeAllReminders();
-      if (want.length) ev.addPopupReminder(want[0]);
+      if (itemWant.length) ev.addPopupReminder(itemWant[0]);
     }
   });
 

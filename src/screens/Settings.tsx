@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import type { ComponentChildren } from 'preact';
-import { X, ChevronLeft, ChevronRight, User, Target, CalendarDays, CalendarPlus, Copy, Sparkles, Utensils, Sunrise, Download, Upload, RefreshCw, Plus, Minus, Trash, Info, Dumbbell } from 'lucide-preact';
+import { X, ChevronLeft, ChevronRight, User, Target, CalendarDays, CalendarPlus, Copy, Sparkles, Utensils, Sunrise, Download, Upload, RefreshCw, Plus, Minus, Trash, Info, Dumbbell, Bell } from 'lucide-preact';
 import { store, update, defaultState } from '../core/state';
 import { actions } from '../core/actions';
 import { fmt, suggestTargets } from '../core/calc';
@@ -17,9 +17,9 @@ import { exportBackup, importBackup } from '../core/backup';
 import { APP_VERSION, BUILD_ID, updater, checkForUpdate, applyUpdate } from '../update/updater';
 import type { Macros, Profile, TargetKey } from '../core/types';
 
-type Page = 'home' | 'profile' | 'targets' | 'week' | 'meals' | 'start' | 'backup' | 'updates' | 'calendar' | 'gcal' | 'ai' | 'aimodels' | 'aiknow';
+type Page = 'home' | 'profile' | 'targets' | 'week' | 'meals' | 'start' | 'backup' | 'updates' | 'calendar' | 'gcal' | 'ai' | 'aimodels' | 'aiknow' | 'remind';
 const TITLES: Record<Page, string> = {
-  home: 'הגדרות', profile: 'פרופיל', targets: 'יעדי תזונה', week: 'שבוע ואימונים', meals: 'ארוחות', start: 'תחילת יום', backup: 'גיבוי', updates: 'עדכונים', calendar: 'פיד לקריאה בלבד', gcal: 'Google Calendar', ai: 'AI תזונה', aimodels: 'מודלים וחשיבה', aiknow: 'ידע וזיכרון',
+  home: 'הגדרות', profile: 'פרופיל', targets: 'יעדי תזונה', week: 'שבוע ואימונים', meals: 'ארוחות', start: 'תחילת יום', backup: 'גיבוי', updates: 'עדכונים', calendar: 'פיד לקריאה בלבד', gcal: 'Google Calendar', ai: 'AI תזונה', aimodels: 'מודלים וחשיבה', aiknow: 'ידע וזיכרון', remind: 'תזכורות והתראות',
 };
 const TARGETS: [TargetKey, string][] = [
   ['dorm-rest', 'מעונות · מנוחה'], ['dorm-train', 'מעונות · אימון'], ['home-rest', 'בית · מנוחה'], ['home-train', 'בית · אימון'],
@@ -140,6 +140,7 @@ function SettingsBody() {
               <Row icon={<Sunrise />} title="תחילת יום" value={set.resetHour === 0 ? 'חצות' : `0${set.resetHour}:00 לפנות בוקר`} onClick={() => setPage('start')} />
             </div>
             <div class="g rows" style={{ marginTop: 14 }}>
+              <Row icon={<Bell />} title="תזכורות והתראות" value={`${Object.values(set.remind.meals).filter(Boolean).length} ארוחות${set.remind.weigh.on ? ' · שקילה' : ''}${set.remind.close.on ? ' · סגירת יום' : ''}${br.connected ? '' : ' · דורש Google Calendar'}`} badge={!br.connected} onClick={() => setPage('remind')} />
               <Row icon={<Sparkles />} title="AI תזונה (Gemini)" value={aiS.configured ? 'מחובר' : 'הערכת קלוריות מטקסט ותמונה'} badge={!aiS.configured} onClick={() => setPage('ai')} />
               <Row icon={<CalendarDays />} title="Google Calendar" value={br.connected ? `מחובר · ${br.events.length} אירועים` : 'קריאת אירועים וכתיבת אימונים'} badge={!br.connected} onClick={() => setPage('gcal')} />
               <Row icon={<CalendarPlus />} title="פיד לקריאה בלבד" value={set.cal.enabled ? `פיד פעיל · התראה ${set.cal.alertMin || 'ללא'}${set.cal.alertMin ? ' דק׳ לפני' : ''}` : 'לא מחובר'} onClick={() => setPage('calendar')} />
@@ -231,6 +232,70 @@ function SettingsBody() {
             <div class="note">אימונים קבועים נוצרים אוטומטית בלוח השנה. ביטול אימון בודד נעשה מהלוח או ממסך היום.</div>
           </>
         )}
+
+        {page === 'remind' && (() => {
+          const r = set.remind;
+          const setR = (patch: Partial<typeof r>) => actions.saveSettings({ remind: { ...r, ...patch } });
+          const syncNow = async () => { await syncWorkouts(true); toast(bridge.get().syncStatus === 'error' ? 'הסנכרון נכשל. בדוק חיבור' : 'התזכורות עודכנו ביומן'); };
+          return (
+            <>
+              <div class="g rows" style={{ padding: '14px 16px' }}>
+                <div style={{ fontSize: 15, lineHeight: 1.6 }}>
+                  {br.connected ? 'התזכורות נשלחות ליומן Google שלך כאירועים עם התראה, ולכן מגיעות לאייפון גם כשהאפליקציה סגורה (דרך אפליקציית Google Calendar או היומן של אפל).' : 'התזכורות נשלחות דרך Google Calendar, כדי שיגיעו לאייפון גם כשהאפליקציה סגורה. חבר קודם את היומן.'}
+                </div>
+                {!br.connected && <button class="btn primary block" style={{ marginTop: 12 }} onClick={() => setPage('gcal')}>חבר Google Calendar</button>}
+                {br.connected && (br.scriptV ?? 1) < 2 && <div class="note" style={{ color: 'var(--warn)', margin: '10px 0 0' }}>הסקריפט ב-Google בגרסה ישנה, ולכן ההתראה תגיע {set.cal.alertMin} דקות לפני כל תזכורת במקום בשעה עצמה. לעדכון מדויק: הגדרות ← Google Calendar ← העתק קוד, ואז פרסם גרסה חדשה.</div>}
+              </div>
+
+              <div class="sec"><span>ארוחות</span></div>
+              <div class="g rows">
+                {set.slots.map((sl) => (
+                  <button class="row2" key={sl.id} onClick={() => setR({ meals: { ...r.meals, [sl.id]: !r.meals[sl.id] } })}>
+                    <span>{sl.name}<small class="num">תזכורת בשעה {sl.time}, רק אם עוד לא רשמת</small></span>
+                    <span class={'tgl' + (r.meals[sl.id] ? ' on' : '')} />
+                  </button>
+                ))}
+              </div>
+
+              <div class="sec"><span>שקילה וסיכום</span></div>
+              <div class="g rows">
+                <button class="row2" onClick={() => setR({ weigh: { ...r.weigh, on: !r.weigh.on } })}>
+                  <span>שקילה שבועית<small>{DAY_NAMES[r.weigh.dow]} בשעה {r.weigh.time}</small></span>
+                  <span class={'tgl' + (r.weigh.on ? ' on' : '')} />
+                </button>
+                {r.weigh.on && (
+                  <div style={{ padding: '4px 16px 14px' }}>
+                    <div class="chips" style={{ margin: '0 0 10px' }}>
+                      {DAY_NAMES.map((n, d) => <button class={'chip' + (r.weigh.dow === d ? ' on' : '')} onClick={() => setR({ weigh: { ...r.weigh, dow: d } })}>{n}</button>)}
+                    </div>
+                    <input class="inp num" type="time" value={r.weigh.time} onChange={(e) => setR({ weigh: { ...r.weigh, time: nv(e) || r.weigh.time } })} />
+                  </div>
+                )}
+                <button class="row2" onClick={() => setR({ close: { ...r.close, on: !r.close.on } })}>
+                  <span>סגירת יום<small>"רשמת הכל?" בשעה {r.close.time}</small></span>
+                  <span class={'tgl' + (r.close.on ? ' on' : '')} />
+                </button>
+                {r.close.on && (
+                  <div style={{ padding: '4px 16px 14px' }}>
+                    <input class="inp num" type="time" value={r.close.time} onChange={(e) => setR({ close: { ...r.close, time: nv(e) || r.close.time } })} />
+                  </div>
+                )}
+              </div>
+
+              <div class="sec"><span>בתוך האפליקציה</span></div>
+              <div class="g rows">
+                <button class="row2" onClick={() => setR({ nudges: !r.nudges })}>
+                  <span>דחיפות חכמות במסך היום<small>ארוחה שהוחמצה, חלבון חסר בערב, שקילה, אימון שלא נרשם ומים</small></span>
+                  <span class={'tgl' + (r.nudges ? ' on' : '')} />
+                </button>
+              </div>
+
+              <button class="btn block" style={{ marginTop: 14 }} disabled={!br.connected} onClick={syncNow}><RefreshCw /> עדכן ביומן עכשיו</button>
+              <div class="note">התזכורות נכתבות ל-14 הימים הקרובים ומתעדכנות לבד. ארוחה שכבר רשמת היום לא תזכיר שוב. אפשר לראות אותן ביומן "workOut".</div>
+              <div class="note">התראות Push אמיתיות מהאפליקציה עצמה דורשות שרת קטן שרץ ברקע. זה אפשרי לבנות בהמשך, ועד אז היומן הוא הדרך האמינה לקבל התראה כשהאפליקציה סגורה.</div>
+            </>
+          );
+        })()}
 
         {page === 'meals' && (
           <>

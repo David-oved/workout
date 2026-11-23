@@ -27,6 +27,7 @@ export function defaultSettings(): Settings {
     ],
     resetHour: 0,
     cal: { enabled: false, feedId: '', alertMin: 30 },
+    remind: { meals: { breakfast: true, lunch: true, dinner: true, snack: false }, weigh: { on: true, dow: 5, time: '09:00' }, close: { on: true, time: '21:30' }, nudges: true },
     ai: { provider: 'none', apiKey: '', model: '', think: 'auto', textModel: '', visionModel: '', web: false, shareData: true, memory: [] },
   };
 }
@@ -72,7 +73,7 @@ function migrate(raw: any): State {
   return {
     ...base,
     ...raw,
-    settings: { ...base.settings, ...raw.settings, ai: { ...base.settings.ai, ...(raw.settings?.ai ?? {}) }, cal: { ...base.settings.cal, ...(raw.settings?.cal ?? {}) } },
+    settings: { ...base.settings, ...raw.settings, ai: { ...base.settings.ai, ...(raw.settings?.ai ?? {}) }, cal: { ...base.settings.cal, ...(raw.settings?.cal ?? {}) }, remind: { ...base.settings.remind, ...(raw.settings?.remind ?? {}), meals: { ...base.settings.remind.meals, ...(raw.settings?.remind?.meals ?? {}) }, weigh: { ...base.settings.remind.weigh, ...(raw.settings?.remind?.weigh ?? {}) }, close: { ...base.settings.remind.close, ...(raw.settings?.remind?.close ?? {}) } } },
     dishes: Array.isArray(raw.dishes) ? raw.dishes : [],
     foodEdits: raw.foodEdits && typeof raw.foodEdits === 'object' ? raw.foodEdits : {},
     customFoods: Array.isArray(raw.customFoods) ? raw.customFoods : [],

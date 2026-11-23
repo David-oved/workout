@@ -2,6 +2,7 @@ import { createStore } from './store';
 import { store } from './state';
 import { addDays, todayKey } from './dates';
 import { WORKOUT_MIN, type ExtEvent } from './conflicts';
+import { buildReminders, reminderKey } from './reminders';
 import scriptTemplate from '../../apps-script/Code.gs?raw';
 
 /**
@@ -29,6 +30,7 @@ export interface BridgeState {
   syncStatus: 'idle' | 'syncing' | 'ok' | 'error';
   syncAt?: number;
   syncMsg?: string;
+  scriptV?: number; // גרסת הסקריפט ב-Google (2 ומעלה: התראה מדויקת לכל תזכורת)
 }
 
 function loadEvents(): { events: ExtEvent[]; at?: number } {
@@ -122,11 +124,12 @@ export async function refreshEvents(force = false) {
       callGet(url, key, { action: 'ping' }).catch(() => null),
     ]);
     const calendars: string[] = Array.isArray(pj?.calendars) ? pj.calendars : bridge.get().calendars;
+    const scriptV = Number(pj?.v ?? 1);
     put(CALS_KEY, JSON.stringify(calendars));
     if (!j?.ok) throw new Error(j?.error === 'unauthorized' ? 'המפתח לא תואם' : String(j?.error ?? 'שגיאה'));
     const at = Date.now();
     put(EV_KEY, JSON.stringify({ events: j.events, at }));
-    bridge.set((s) => ({ ...s, events: j.events, calendars, range: { from, to }, evStatus: 'ok', evAt: at }));
+    bridge.set((s) => ({ ...s, events: j.events, calendars, range: { from, to }, evStatus: 'ok', evAt: at, scriptV }));
   } catch (e) {
     bridge.set((s) => ({ ...s, evStatus: 'error', evMsg: e instanceof TypeError ? 'אין חיבור לאינטרנט' : (e as Error).message }));
   } finally {
@@ -148,8 +151,9 @@ export async function syncWorkouts(force = false) {
     .filter((w) => w.date >= from && w.date <= to)
     .map((w) => ({ id: w.id, title: w.title, date: w.date, time: w.time, status: w.status, durationMin: WORKOUT_MIN }))
     .sort((a, b) => (a.date + a.time + a.id).localeCompare(b.date + b.time + b.id));
-  const payload = { key, action: 'sync', from, to, alertMin: s.settings.cal.alertMin, workouts };
-  const hash = JSON.stringify([workouts, payload.alertMin, from]);
+  const reminders = buildReminders(s, from, to);
+  const payload = { key, action: 'sync', from, to, alertMin: s.settings.cal.alertMin, workouts: [...workouts, ...reminders] };
+  const hash = JSON.stringify([payload.workouts, payload.alertMin, from]);
   if (!force && get(HASH_KEY) === hash) return;
 
   syncing = true;
@@ -182,7 +186,7 @@ export function startBridge() {
   store.subscribe(() => {
     if (!bridge.get().connected) return;
     const s = store.get();
-    const key = JSON.stringify([s.workouts, s.settings.cal.alertMin]);
+    const key = JSON.stringify([s.workouts, s.settings.cal.alertMin, reminderKey(s)]);
     if (key === last) return;
     last = key;
     clearTimeout(t);

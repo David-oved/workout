@@ -1,4 +1,5 @@
-import { Droplets, ListChecks, Minus, Settings as Cog, ChevronLeft, ChevronRight, Plus, Dumbbell, Check, Copy, Download, Siren, RefreshCw, Utensils } from 'lucide-preact';
+import { useEffect, useState } from 'preact/hooks';
+import { Bell, X, Droplets, ListChecks, Minus, Settings as Cog, ChevronLeft, ChevronRight, Plus, Dumbbell, Check, Copy, Download, Siren, RefreshCw, Utensils } from 'lucide-preact';
 import { EventList } from '../ui/EventList';
 import { bridge, refreshEvents, syncWorkouts } from '../core/bridge';
 import { conflictsFor, eventsOn, hhmm, suggestSlot } from '../core/conflicts';
@@ -9,6 +10,7 @@ import { DAY_NAMES, addDays, dayLabel, dayMonth, dow, todayKey } from '../core/d
 import { ui, setUi, openAdd, toast } from '../ui/ui';
 import { Ring } from '../ui/components';
 import { label } from '../core/meal';
+import { nudgesFor, type Nudge } from '../core/reminders';
 import type { Workout } from '../core/types';
 
 const MACROS = [
@@ -36,6 +38,47 @@ export function WorkoutCard({ w }: { w: Workout }) {
           onClick={(e) => { e.stopPropagation(); actions.updateWorkout(w.id, { status: 'done' }); toast('האימון סומן כבוצע', () => actions.updateWorkout(w.id, { status: 'planned' })); }}
         >בוצע</button>
       )}
+    </div>
+  );
+}
+
+const nudgeKey = (d: string) => 'wo:nudge:' + d;
+const readDismissed = (d: string): string[] => { try { return JSON.parse(localStorage.getItem(nudgeKey(d)) ?? '[]'); } catch { return []; } };
+
+/** "דחיפות" חכמות: מה כדאי לעשות עכשיו, לפי השעה ומה שרשמת. כל אחת אפשר לסגור להיום */
+function Nudges({ today }: { today: string }) {
+  const s = store.use((x) => x);
+  const [tick, setTick] = useState(0);
+  const [gone, setGone] = useState<string[]>(() => readDismissed(today));
+  useEffect(() => {
+    const t = setInterval(() => setTick((n) => n + 1), 60_000);
+    const v = () => { if (document.visibilityState === 'visible') { setTick((n) => n + 1); setGone(readDismissed(today)); } };
+    document.addEventListener('visibilitychange', v);
+    return () => { clearInterval(t); document.removeEventListener('visibilitychange', v); };
+  }, [today]);
+  void tick;
+  const list = nudgesFor(s).filter((n) => !gone.includes(n.id));
+  if (!list.length) return null;
+  const dismiss = (id: string) => { const next = [...gone, id]; setGone(next); try { localStorage.setItem(nudgeKey(today), JSON.stringify(next)); } catch { /* ignore */ } };
+  const act = (n: Nudge) => {
+    const c = n.cta;
+    if (!c) return;
+    if (c.kind === 'add') openAdd(c.slot, today);
+    else if (c.kind === 'progress') setUi({ tab: 'progress' });
+    else if (c.kind === 'train') setUi({ training: { workoutId: c.workoutId, date: c.date ?? today, title: c.title ?? 'אימון' } });
+    else if (c.kind === 'water') actions.addWater(today, 250);
+    if (c.kind !== 'water') dismiss(n.id);
+  };
+  return (
+    <div class="nudges">
+      {list.map((n) => (
+        <div class="g nudge" key={n.id}>
+          <Bell />
+          <span class="tx">{n.text}</span>
+          {n.cta && <button class="go" onClick={() => act(n)}>{n.cta.label}</button>}
+          <button class="x" aria-label="סגור להיום" onClick={() => dismiss(n.id)}><X /></button>
+        </div>
+      ))}
     </div>
   );
 }
@@ -145,6 +188,8 @@ export function TodayScreen() {
           );
         })}
       </div>
+
+      {date === today && <Nudges today={today} />}
 
       <div class="g wtr">
         <Droplets />
