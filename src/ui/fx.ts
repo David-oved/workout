@@ -131,6 +131,9 @@ export function beep(times = 2) {
 export function initFx() {
   syncFxClass();
   store.subscribe(syncFxClass);
+  // נעילת זום: בלי צביטה, בלי הגדלה בלחיצה ארוכה ובלי תפריט הקשר
+  for (const t of ['gesturestart', 'gesturechange', 'gestureend']) document.addEventListener(t, (e) => e.preventDefault());
+  document.addEventListener('contextmenu', (e) => e.preventDefault());
   addEventListener('pointerdown', (e) => { last = { x: e.clientX, y: e.clientY }; }, { passive: true, capture: true });
 
   let base: { entries: number; done: number; pOk: boolean } | null = null;

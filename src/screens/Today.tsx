@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { Sparkles, Bell, X, Droplets, ListChecks, Minus, Settings as Cog, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, ChevronsUpDown, Maximize2, Plus, Dumbbell, Check, Copy, Download, Siren, RefreshCw } from 'lucide-preact';
 import { CountNum } from '../ui/anim';
 import { burst, rain, confetti, floatText } from '../ui/fx';
@@ -137,16 +137,32 @@ export function TodayScreen() {
   const [rvk, setRvk] = useState(0);
   // מצב רגיל: מציירים מחדש את כניסת הכרטיסים כשהוילון עולה
   useEffect(() => { if (!glance) setRvk((k) => k + 1); }, [glance]);
-  const openNormal = () => { gl.current?.style.removeProperty('--gd'); setUi({ glance: false }); };
-  const gStart = (e: TouchEvent) => { gd.current = { on: true, y0: e.touches[0].clientY, t0: Date.now(), dy: 0 }; gl.current?.classList.add('drag'); };
-  const gMove = (e: TouchEvent) => { const d = gd.current; if (!d.on) return; d.dy = Math.max(0, d.y0 - e.touches[0].clientY); gl.current?.style.setProperty('--gd', d.dy + 'px'); };
+  const gIn = useRef<HTMLDivElement>(null);
+  const paint = (p: number, dy: number) => {
+    const g = gl.current, i = gIn.current, s2 = scr.current;
+    if (g) g.style.transform = `translateY(${-dy}px)`;
+    if (i) { i.style.transform = `translateY(${-p * 36}px) scale(${1 - p * 0.05})`; i.style.opacity = String(Math.max(0, 1 - p * 1.3)); }
+    if (s2) { s2.style.transform = `scale(${0.95 + 0.05 * p})`; s2.style.opacity = String(0.35 + 0.65 * p); }
+  };
+  const clearPaint = () => { for (const el of [gl.current, gIn.current, scr.current]) if (el) { el.style.removeProperty('transform'); el.style.removeProperty('opacity'); } };
+  const dragging = (on: boolean) => { for (const el of [gl.current, scr.current]) el?.classList.toggle('drag', on); };
+  // אחרי שה-class התחלף, מנקים את הציור הידני: המעבר ממשיך בצורה חלקה מהמקום שבו האצבע עזבה
+  useLayoutEffect(() => { clearPaint(); }, [glance]);
+  const openNormal = () => setUi({ glance: false });
+  const gStart = (e: TouchEvent) => { gd.current = { on: true, y0: e.touches[0].clientY, t0: Date.now(), dy: 0 }; dragging(true); };
+  const gMove = (e: TouchEvent) => {
+    const d = gd.current;
+    if (!d.on) return;
+    d.dy = Math.max(0, d.y0 - e.touches[0].clientY);
+    paint(Math.min(1, d.dy / (innerHeight * 0.6)), d.dy);
+  };
   const gEnd = () => {
     const d = gd.current;
     if (!d.on) return;
     d.on = false;
-    gl.current?.classList.remove('drag');
+    dragging(false);
     const v = d.dy / Math.max(1, Date.now() - d.t0);
-    if (d.dy > 110 || (d.dy > 40 && v > 0.5)) openNormal(); else gl.current?.style.removeProperty('--gd');
+    if (d.dy > 110 || (d.dy > 40 && v > 0.5)) openNormal(); else clearPaint();
   };
   const date = ui.use((u) => u.date);
   const tab = ui.use((u) => u.tab);
@@ -188,9 +204,7 @@ export function TodayScreen() {
   const tapRing = () => {
     const el = ringRef.current;
     if (el) { el.classList.remove('boing'); void el.offsetWidth; el.classList.add('boing'); }
-    const t = taps.current, now = Date.now();
-    t.r = now - t.t < 900 ? t.r + 1 : 1; t.t = now;
-    if (t.r >= 5) { t.r = 0; confetti(70); burst(['🔥', '💪', '⭐'], undefined, undefined, 10); floatText('אתה מטורף 😎'); }
+    setUi({ stat: 'k' });
   };
   const sub = `${DAY_NAMES[dow(date)]} ${dayMonth(date)} · ${info.place === 'dorm' ? 'מעונות' : 'בית'}`;
 
@@ -259,7 +273,7 @@ export function TodayScreen() {
   );
   const heroEl = (big: boolean) => (
     <div class={'g hero' + (big ? ' v' : '') + (left < 0 ? ' over' : '')}>
-      <div class="hrw" ref={big ? undefined : ringRef} onClick={big ? undefined : tapRing}>
+      <div class="hrw" ref={big ? undefined : ringRef} onClick={tapRing}>
         <Ring size={big ? 200 : 150} stroke={big ? 15 : 12} pct={eaten.k / target.k} color={left < 0 ? 'var(--warn)' : 'var(--accent)'}>
           <div class="rc">
             <div class="big num"><CountNum v={Math.abs(left)} /></div>
@@ -278,14 +292,14 @@ export function TodayScreen() {
       {MACROS.map((m) => {
         const rem = target[m.k] - eaten[m.k];
         return (
-          <div class="g mc" key={m.k}>
+          <button class="g mc" key={m.k} onClick={() => setUi({ stat: m.k })} aria-label={`פירוט ${m.name}`}>
             <Ring size={big ? 78 : 70} stroke={big ? 7 : 6.5} pct={eaten[m.k] / target[m.k]} color={m.color} cls="mr">
               <span class="num"><CountNum v={Math.abs(rem)} raw /></span>
             </Ring>
             <div style={{ fontSize: 14 }}>{m.name}</div>
             <div class="ate num"><b style={{ color: m.color }}><CountNum v={eaten[m.k]} raw /></b> ג׳ אכלתי</div>
             <div class="mu">{rem < 0 ? `מעל היעד (${target[m.k]})` : `מתוך ${target[m.k]} ג׳`}</div>
-          </div>
+          </button>
         );
       })}
     </div>
@@ -293,7 +307,7 @@ export function TodayScreen() {
 
   return (
     <>
-    <section class={'screen rv' + (rvk % 2) + (tab === 'today' ? ' on' : '')} aria-label="היום" ref={scr}
+    <section class={'screen rv' + (rvk % 2) + (glance ? ' gon' : '') + (tab === 'today' ? ' on' : '')} aria-label="היום" ref={scr}
       onTouchStart={(e: TouchEvent) => { const el = scr.current; pd.current = { on: !!el && el.scrollTop <= 0, y0: e.touches[0].clientY, dy: 0 }; }}
       onTouchMove={(e: TouchEvent) => { if (pd.current.on) pd.current.dy = e.touches[0].clientY - pd.current.y0; }}
       onTouchEnd={() => { if (pd.current.on && pd.current.dy > 120) setUi({ glance: true }); pd.current.on = false; }}>
@@ -380,13 +394,15 @@ export function TodayScreen() {
       )}
     </section>
     <div class={'glance' + (glance ? '' : ' off') + (tab === 'today' ? '' : ' hid')} ref={gl} onTouchStart={gStart as never} onTouchMove={gMove as never} onTouchEnd={gEnd} onTouchCancel={gEnd} aria-label="מבט מהיר">
-      {hdEl(true)}
-      <div class="gl-mid">
-        {heroEl(true)}
-        {macrosEl(true)}
-        <button class="btn primary block gl-add" onClick={() => openAdd(undefined, date)}><Plus />הוסף ארוחה</button>
+      <div class="gl-in" ref={gIn}>
+        {hdEl(true)}
+        <div class="gl-mid">
+          {heroEl(true)}
+          {macrosEl(true)}
+          <button class="btn primary block gl-add" onClick={() => openAdd(undefined, date)}><Plus />הוסף ארוחה</button>
+        </div>
+        <button class="gl-pull" onClick={openNormal} aria-label="הצג את כל היום"><i class="mb-h" /><ChevronUp /><small>החלק למעלה לכל היום</small></button>
       </div>
-      <button class="gl-pull" onClick={openNormal} aria-label="הצג את כל היום"><i class="mb-h" /><ChevronUp /><small>החלק למעלה לכל היום</small></button>
     </div>
     </>
   );

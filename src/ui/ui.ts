@@ -23,6 +23,7 @@ export interface Ui {
   toast: Toast | null;
   /** מבט מהיר: מסך היום נפתח רק עם המדדים וכפתור הוספה. מחליקים למעלה למצב רגיל */
   glance: boolean;
+  stat: 'k' | 'p' | 'c' | 'f' | null; // פירוט מדד
 }
 
 const reset = store.get().settings.resetHour;
@@ -43,6 +44,7 @@ export const ui = createStore<Ui>({
   plan: null,
   toast: null,
   glance: true,
+  stat: null,
 });
 
 export const setUi = (patch: Partial<Ui>) => ui.set((s) => ({ ...s, ...patch }));

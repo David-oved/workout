@@ -5,10 +5,10 @@
   --st:env(safe-area-inset-top,0px);--sb:env(safe-area-inset-bottom,0px);
   --dock-b:max(10px,calc(var(--sb) * .3));--dock-h:58px;
   --font:-apple-system,"SF Pro Text","SF Hebrew","Heebo",system-ui,"Segoe UI",sans-serif;
-  --spring:cubic-bezier(.3,1.5,.5,1);--ease:cubic-bezier(.2,.9,.25,1);
+  --spring:cubic-bezier(.3,1.5,.5,1);--ease:cubic-bezier(.2,.9,.25,1);--ios:cubic-bezier(.32,.72,0,1);
 }
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-html,body{margin:0;height:100%;height:100dvh;background:var(--bg);color:var(--tx);font-family:var(--font);overscroll-behavior:none;-webkit-text-size-adjust:100%;-webkit-touch-callout:none;-webkit-user-select:none;user-select:none;touch-action:manipulation}
+html,body{margin:0;height:100%;height:100dvh;background:var(--bg);color:var(--tx);font-family:var(--font);overscroll-behavior:none;-webkit-text-size-adjust:100%;-webkit-touch-callout:none;-webkit-user-select:none;user-select:none;touch-action:pan-x pan-y}
 body{position:fixed;inset:0;overflow:hidden}
 #app{position:fixed;inset:0;overflow:hidden;overflow:clip;direction:rtl;text-align:right;
   background:
@@ -942,13 +942,13 @@ body.fx .streak .fl{animation:flame 1.4s ease-in-out infinite}
 @keyframes rise2{from{opacity:0;transform:translateY(18px) scale(.975)}to{opacity:1;transform:none}}
 @keyframes cue{0%,100%{transform:translateY(2px)}50%{transform:translateY(-3px)}}
 body.fx .screen.rv1>*{animation-name:rise2}
-.dock{transition:transform .55s var(--ease),opacity .35s,visibility 0s}
-.dock.hide{transform:translateY(160%);opacity:0;visibility:hidden;pointer-events:none;transition:transform .45s var(--ease),opacity .25s,visibility 0s .45s}
-.glance{position:absolute;inset:0;z-index:55;display:flex;flex-direction:column;padding:calc(var(--st) + 14px) 20px calc(max(16px,var(--sb)) + 8px);touch-action:none;
+.dock{transition:transform .75s var(--ios) .1s,opacity .4s .1s,visibility 0s}
+.dock.hide{transform:translateY(160%);opacity:0;visibility:hidden;pointer-events:none;transition:transform .45s var(--ios),opacity .25s,visibility 0s .45s}
+.glance{position:absolute;inset:0;z-index:55;display:flex;flex-direction:column;padding:calc(var(--st) + 14px) 20px max(8px,calc(var(--sb) - 20px));touch-action:none;border-radius:0 0 40px 40px;box-shadow:0 30px 70px rgba(0,0,0,.7);
   background:radial-gradient(circle at 92% -6%,rgba(92,225,168,.2),transparent 42%),radial-gradient(circle at -12% 96%,rgba(90,130,255,.17),transparent 46%),#000;
-  transform:translateY(calc(var(--gd,0px)*-1));transition:transform .55s var(--ease),opacity .3s}
+  transition:transform .7s var(--ios),opacity .3s}
 .glance.drag{transition:none}
-.glance.off{transform:translateY(-104%);visibility:hidden;transition:transform .55s var(--ease),visibility 0s .55s}
+.glance.off{transform:translateY(-106%);visibility:hidden;box-shadow:none;transition:transform .7s var(--ios),visibility 0s .7s,box-shadow .3s}
 .glance.hid{opacity:0;visibility:hidden;transform:none;transition:opacity .25s,visibility 0s .25s}
 .glance .hd{margin-bottom:0}
 .gl-mid{flex:1;min-height:0;display:flex;flex-direction:column;justify-content:center;gap:14px}
@@ -965,3 +965,41 @@ body.fx .screen.rv1>*{animation-name:rise2}
 .gl-pull small{font-size:12px}
 body.fx .gl-pull svg{animation:cue 1.7s ease-in-out infinite}
 @media (max-height:720px){.glance .streak{display:none}.gl-mid{gap:10px}}
+
+/* ---------- v0.22: פתיחה מקצועית, פירוט מדד, נעילת זום ---------- */
+.glance .gl-in{display:flex;flex-direction:column;flex:1;min-height:0;transition:transform .7s var(--ios),opacity .45s}
+.glance.off .gl-in{transform:translateY(-36px) scale(.95);opacity:0}
+.glance.drag,.glance.drag .gl-in,.screen.drag{transition:none!important}
+.screen.rv0,.screen.rv1{transform-origin:50% 35%;transition:opacity .7s var(--ios),transform .7s var(--ios),visibility .35s}
+.screen.on.gon{transform:scale(.95);opacity:.35}
+body.fx .glance:not(.off) .gl-in>*{animation:rise .7s var(--ios) backwards}
+body.fx .glance:not(.off) .gl-in>*:nth-child(2){animation-delay:.07s}
+body.fx .glance:not(.off) .gl-in>*:nth-child(3){animation-delay:.14s}
+.mc{display:block;width:100%;font:inherit;color:inherit}
+.hrw{cursor:pointer}
+.stt-h{display:flex;justify-content:space-between;align-items:center;margin:4px 2px 2px}
+.stt-h b{font-size:20px;font-weight:600}
+.stt-big{font-size:46px;font-weight:700;line-height:1.1;margin:6px 2px 10px}
+.stt-big small{font-size:15px;font-weight:400;color:var(--mu);margin-inline-start:8px}
+.stt-bar{height:8px;border-radius:4px;background:rgba(255,255,255,.1);overflow:hidden}
+.stt-bar i{display:block;height:100%;border-radius:4px;transition:width .9s var(--ios)}
+.stt-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:14px 0 6px}
+.stt-grid>div{background:rgba(255,255,255,.06);border-radius:14px;padding:9px 6px;text-align:center}
+.stt-grid span{display:block;font-size:11.5px}
+.stt-grid b{display:block;font-size:17px;font-weight:600;margin-top:2px}
+.stt-sec{font-size:13px;color:var(--mu);margin:14px 2px 6px}
+.stt-row{display:flex;justify-content:space-between;align-items:baseline;gap:12px;padding:8px 2px;border-top:.5px solid var(--line);font-size:14.5px}
+.stt-row b{font-weight:600;white-space:nowrap}
+.stt-row small{font-size:12px;font-weight:400}
+.stt-n{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.stt-sl{display:flex;align-items:center;gap:10px;padding:5px 2px;font-size:14px}
+.stt-sl span{width:58px;flex:none}
+.stt-sl b{width:46px;text-align:left;font-weight:600;flex:none}
+.stt-m{flex:1;height:6px;border-radius:3px;background:rgba(255,255,255,.08);overflow:hidden}
+.stt-m i{display:block;height:100%;border-radius:3px}
+.stt-tip{margin:14px 0 4px;padding:11px 14px;border-radius:16px;background:rgba(92,225,168,.1);border:.5px solid rgba(92,225,168,.3);font-size:13.5px;line-height:1.5}
+body.fx .stt>*{animation:rise .6s var(--ios) backwards}
+body.fx .stt>*:nth-child(2){animation-delay:.04s}
+body.fx .stt>*:nth-child(3){animation-delay:.08s}
+body.fx .stt>*:nth-child(4){animation-delay:.12s}
+body.fx .stt>*:nth-child(n+5){animation-delay:.16s}

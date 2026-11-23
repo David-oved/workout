@@ -5,6 +5,7 @@ import { TrainingSheet } from './screens/Training';
 import { SummarySheet } from './screens/SummarySheet';
 import { PlanSheet } from './screens/PlanSheet';
 import { Onboarding } from './screens/Onboarding';
+import { StatSheet } from './screens/StatSheet';
 import { TodayScreen } from './screens/Today';
 import { AddScreen } from './screens/Add';
 import { ProgressScreen } from './screens/Progress';
@@ -51,6 +52,7 @@ export function App() {
       <WorkoutSheet />
       <TrainingSheet />
       <SummarySheet />
+      <StatSheet />
       <PlanSheet />
       <Onboarding />
       <CameraView />
