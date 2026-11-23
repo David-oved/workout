@@ -138,6 +138,7 @@ function SettingsBody() {
             <div class="g rows">
               <Row icon={<User />} title="פרופיל" value={`גיל ${p.age} · ${p.heightCm} ס״מ · ${p.weightKg}→${p.goalKg} ק״ג`} onClick={() => setPage('profile')} />
               <Row icon={<Target />} title="יעדי תזונה" value={`${fmt(set.targets['dorm-train'].k)} קל׳ באימון · ${fmt(set.targets['dorm-rest'].k)} במנוחה`} onClick={() => setPage('targets')} />
+              <Row icon={<Dumbbell />} title="תוכנית אימונים" value={s.plans.length ? `${(s.plans.find((x) => x.id === s.activePlan) ?? s.plans[0]).days.length} ימים בתוכנית` : 'בנה או ייבא תוכנית'} badge={!s.plans.length} onClick={() => setUi({ settingsOpen: false, plan: { dayId: null } })} />
               <Row icon={<CalendarDays />} title="שבוע ואימונים" value={`${set.routine.length} אימונים בשבוע · ${set.places.filter((x) => x === 'dorm').length} ימי מעונות`} onClick={() => setPage('week')} />
               <Row icon={<Utensils />} title="ארוחות" value={set.slots.map((x) => x.name).join(' · ')} onClick={() => setPage('meals')} />
               <Row icon={<Sunrise />} title="תחילת יום" value={set.resetHour === 0 ? 'חצות' : `0${set.resetHour}:00 לפנות בוקר`} onClick={() => setPage('start')} />

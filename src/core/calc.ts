@@ -26,7 +26,7 @@ export function dayInfo(s: State, date: string) {
 
 /** חישוב יעדים מוצע: Mifflin-St Jeor ×1.6 + עודף לפי הקצב. התוצאה הערכה, לא תחליף לתזונאי. */
 export function suggestTargets(p: Profile): Record<TargetKey, Macros> {
-  const bmr = 10 * p.weightKg + 6.25 * p.heightCm - 5 * p.age + 5;
+  const bmr = 10 * p.weightKg + 6.25 * p.heightCm - 5 * p.age + (p.sex === 'f' ? -161 : 5);
   const surplus = { slow: 300, mid: 500, fast: 750 }[p.pace];
   const base = bmr * 1.6 + surplus;
   const round50 = (n: number) => Math.round(n / 50) * 50;

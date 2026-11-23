@@ -3,6 +3,8 @@ import { Dock, ToastView, UpdateBanner } from './ui/components';
 import { CameraView } from './ui/CameraView';
 import { TrainingSheet } from './screens/Training';
 import { SummarySheet } from './screens/SummarySheet';
+import { PlanSheet } from './screens/PlanSheet';
+import { Onboarding } from './screens/Onboarding';
 import { TodayScreen } from './screens/Today';
 import { AddScreen } from './screens/Add';
 import { ProgressScreen } from './screens/Progress';
@@ -42,6 +44,8 @@ export function App() {
       <WorkoutSheet />
       <TrainingSheet />
       <SummarySheet />
+      <PlanSheet />
+      <Onboarding />
       <CameraView />
       <ToastView />
       <UpdateBanner />

@@ -6,11 +6,13 @@ import { uid, dayLabel, todayKey } from '../core/dates';
 import { ui, setUi, toast } from '../ui/ui';
 import { BigSheet } from '../ui/components';
 import { EXERCISES, e1rm, templateFor } from '../data/exercises';
+import { dayForTitle, exLabel, progressionFor } from '../core/plan';
 import { AmtInput } from './FoodPicker';
 import type { ExLog, Session, SetLog } from '../core/types';
 
 const blank = (): SetLog => ({ kg: 0, reps: 0 });
-const fmtSet = (x: SetLog) => (x.kg ? `${x.kg}×${x.reps}` : `${x.reps} חז׳`);
+const fmtSet = (x: SetLog) => (x.kg ? `${x.kg}×${x.reps}` : `${x.reps}`);
+void exLabel;
 
 /** יומן אימון: תרגילים וסטים. הערכים מהאימון הקודם מוצעים מראש, כדי שרק תתקן מה שהשתנה */
 export function TrainingSheet() {
@@ -33,6 +35,19 @@ export function TrainingSheet() {
     const mine = t.workoutId ? s.sessions.find((x) => x.workoutId === t.workoutId) : undefined;
     if (mine) { setSid(mine.id); setEx(JSON.parse(JSON.stringify(mine.exercises))); return; }
     setSid(null);
+    const pday = dayForTitle(s.plans, s.activePlan, t.title);
+    if (pday) {
+      const list: ExLog[] = [];
+      for (const b of pday.blocks) for (const e of b.exercises) {
+        const pv = prevOf(e.name);
+        list.push({
+          name: e.name, unit: e.unit, group: b.title, target: { sets: e.sets, reps: e.reps },
+          sets: Array.from({ length: e.sets }, (_, i) => ({ kg: pv?.sets[i]?.kg ?? pv?.sets[pv.sets.length - 1]?.kg ?? e.kg ?? 0, reps: e.reps })),
+        });
+      }
+      setEx(list);
+      return;
+    }
     const sameTitle = history.find((x) => x.title === t.title);
     if (sameTitle) {
       setEx(sameTitle.exercises.map((e) => ({ name: e.name, sets: e.sets.map((y) => ({ ...y })) })));
@@ -65,7 +80,7 @@ export function TrainingSheet() {
 
   const save = () => {
     if (!cur) return;
-    const clean = ex.map((e) => ({ ...e, sets: e.sets.filter((y) => y.reps > 0 || y.kg > 0) })).filter((e) => e.sets.length);
+    const clean = ex.map((e) => ({ ...e, sets: e.sets.filter((y) => y.reps > 0) })).filter((e) => e.sets.length);
     if (!clean.length) { toast('אין סטים לשמירה'); return; }
     const x: Session = { id: sid ?? uid(), date: cur.date, title: cur.title, workoutId: cur.workoutId, exercises: clean, ts: Date.now() };
     actions.saveSession(x);
@@ -88,6 +103,7 @@ export function TrainingSheet() {
         <div>
           <div class="as-ti" style={{ fontSize: 26 }}>{cur?.title ?? 'אימון'}</div>
           <div class="as-su num">{cur ? dayLabel(cur.date, today) : ''} · {ex.length} תרגילים · נפח {Math.round(vol).toLocaleString('en-US')} ק״ג</div>
+          <button class="as-back" style={{ margin: '6px 0 0' }} onClick={() => { close(); setUi({ plan: { dayId: dayForTitle(s.plans, s.activePlan, cur?.title ?? '')?.id ?? null } }); }}>ערוך תוכנית</button>
         </div>
         <button class="as-x" aria-label="סגור" onClick={close}><X /></button>
       </div>
@@ -95,19 +111,30 @@ export function TrainingSheet() {
       <div class="as-body tr-body" ref={bodyRef} style={{ paddingBottom: 130 }}>
         {ex.map((e, i) => {
           const prev = prevOf(e.name, sid);
+          const pr = e.target ? progressionFor({ id: '', name: e.name, sets: e.target.sets, reps: e.target.reps, unit: e.unit ?? 'reps' }, s.sessions.filter((x) => x.id !== sid)) : null;
           return (
             <div class="g tr-ex" key={e.name}>
+              {e.group && <div class="tr-grp">{e.group}{e.target ? ` · יעד ${e.target.sets}×${e.unit === 'sec' ? `${e.target.reps} שנ׳` : e.target.reps}` : ''}</div>}
               <div class="tr-h">
                 <b>{e.name}</b>
                 {prFor(e) && <span class="tr-pr"><Trophy />שיא חדש</span>}
                 <button class="as-rm" aria-label="הסר תרגיל" onClick={() => rmEx(i)}><Trash /></button>
               </div>
+              {pr && (
+                <button class="tr-prog" onClick={() => {
+                  const day = dayForTitle(s.plans, s.activePlan, cur?.title ?? '');
+                  const plan = s.plans.find((p) => p.days.includes(day!));
+                  if (!plan || !day) return;
+                  actions.savePlan({ ...plan, days: plan.days.map((d) => (d.id === day.id ? { ...d, blocks: d.blocks.map((b) => ({ ...b, exercises: b.exercises.map((x) => (x.name === e.name ? { ...x, ...pr.next } : x)) })) } : d)) });
+                  toast('התוכנית עודכנה להתקדמות');
+                }}>⬆ {pr.text} · עדכן תוכנית</button>
+              )}
               {prev && <div class="tr-prev num">בפעם הקודמת: {prev.sets.map(fmtSet).join(' · ')}</div>}
               {e.sets.map((y, j) => (
                 <div class="tr-set" key={j}>
                   <span class="n num">{j + 1}</span>
                   <AmtInput value={y.kg} onChange={(n) => setSet(i, j, { kg: n })} suffix="ק״ג" />
-                  <AmtInput value={y.reps} onChange={(n) => setSet(i, j, { reps: Math.round(n) })} suffix="חזרות" />
+                  <AmtInput value={y.reps} onChange={(n) => setSet(i, j, { reps: Math.round(n) })} suffix={e.unit === 'sec' ? 'שניות' : 'חזרות'} />
                   <button class="as-rm" aria-label="הסר סט" onClick={() => rmSet(i, j)}><X /></button>
                 </div>
               ))}

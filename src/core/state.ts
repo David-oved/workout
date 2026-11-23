@@ -9,22 +9,18 @@ const LS_KEY = 'workout:state:mirror';
 export const SCHEMA = 1;
 
 export function defaultSettings(): Settings {
-  const profile = { age: 17, heightCm: 183, weightKg: 70, goalKg: 81, pace: 'mid' as const };
+  const profile = { sex: 'm' as const, age: 25, heightCm: 175, weightKg: 70, goalKg: 75, pace: 'mid' as const };
   return {
     profile,
     targets: suggestTargets(profile),
-    places: ['dorm', 'dorm', 'dorm', 'dorm', 'dorm', 'home', 'home'],
+    places: ['home', 'home', 'home', 'home', 'home', 'home', 'home'],
     slots: [
       { id: 'breakfast', name: 'בוקר', time: '08:00' },
       { id: 'lunch', name: 'צהריים', time: '13:30' },
       { id: 'dinner', name: 'ערב', time: '20:00' },
       { id: 'snack', name: 'נשנוש', time: '16:30' },
     ],
-    routine: [
-      { id: 'r-sun', dow: 0, time: '18:00', title: 'חזה וכתפיים' },
-      { id: 'r-tue', dow: 2, time: '18:00', title: 'רגליים' },
-      { id: 'r-thu', dow: 4, time: '18:00', title: 'גב וידיים' },
-    ],
+    routine: [],
     resetHour: 0,
     cal: { enabled: false, feedId: '', alertMin: 30 },
     remind: { v: 2, meals: { breakfast: false, lunch: false, dinner: false, snack: false }, weigh: { on: false, dow: 5, time: '09:00' }, close: { on: false, time: '21:30' }, nudges: true, status: { on: true, times: ['11:00', '14:00', '17:00', '20:00'], quiet: { from: '00:00', to: '10:00' } }, workouts: false, summary: { on: true, time: '21:30' } },
@@ -45,10 +41,12 @@ export function defaultState(): State {
     foodEdits: {},
     customFoods: [],
     hiddenTiles: [],
+    plans: [],
+    activePlan: null,
     sessions: [],
     summaries: {},
     water: {},
-    meta: { createdAt: Date.now() },
+    meta: { createdAt: Date.now(), onboarded: false },
   };
 }
 
@@ -79,10 +77,13 @@ function migrate(raw: any): State {
     foodEdits: raw.foodEdits && typeof raw.foodEdits === 'object' ? raw.foodEdits : {},
     customFoods: Array.isArray(raw.customFoods) ? raw.customFoods : [],
     hiddenTiles: Array.isArray(raw.hiddenTiles) ? raw.hiddenTiles : [],
+    plans: Array.isArray(raw.plans) ? raw.plans : [],
+    activePlan: typeof raw.activePlan === 'string' ? raw.activePlan : null,
     sessions: Array.isArray(raw.sessions) ? raw.sessions : [],
     summaries: raw.summaries && typeof raw.summaries === 'object' ? raw.summaries : {},
     water: raw.water && typeof raw.water === 'object' ? raw.water : {},
-    meta: { ...base.meta, ...(raw.meta ?? {}) },
+    // מי שכבר השתמש באפליקציה לא עובר שוב את ההיכרות; משתמש חדש כן
+    meta: { ...base.meta, ...(raw.meta ?? {}), onboarded: raw.meta?.onboarded ?? true },
     schema: SCHEMA,
   };
 }

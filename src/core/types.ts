@@ -66,13 +66,19 @@ export interface Workout {
   routineId?: string;
 }
 export interface Routine { id: string; dow: number; time: string; title: string }
-export interface SetLog { kg: number; reps: number }
-export interface ExLog { name: string; sets: SetLog[] }
+export interface SetLog { kg: number; reps: number } // reps = שניות כשהתרגיל בזמן
+export interface ExLog { name: string; sets: SetLog[]; unit?: 'reps' | 'sec'; group?: string; target?: { sets: number; reps: number } }
+
+/** תוכנית אימונים: ימים ← בלוקים ← תרגילים. כללית לכל משתמש, והתוכן נשמר רק במכשיר שלו */
+export interface PlanEx { id: string; name: string; sets: number; reps: number; unit: 'reps' | 'sec'; kg?: number; note?: string }
+export interface PlanBlock { id: string; title: string; exercises: PlanEx[] }
+export interface PlanDay { id: string; name: string; blocks: PlanBlock[] }
+export interface Plan { id: string; name: string; days: PlanDay[]; ts: number }
 /** אימון שנרשם בפועל: תרגילים, סטים, משקל וחזרות */
 export interface Session { id: string; date: string; title: string; workoutId?: string; exercises: ExLog[]; ts: number }
 export interface Weigh { date: string; kg: number }
 
-export interface Profile { age: number; heightCm: number; weightKg: number; goalKg: number; pace: 'slow' | 'mid' | 'fast' }
+export interface Profile { sex?: 'm' | 'f'; age: number; heightCm: number; weightKg: number; goalKg: number; pace: 'slow' | 'mid' | 'fast' }
 
 /** תזכורות: ארוחות לפי שעות הארוחות, שקילה שבועית, סגירת יום, ו"דחיפות" בתוך האפליקציה */
 export interface Remind {
@@ -119,9 +125,11 @@ export interface State {
   dishes: Dish[];
   foodEdits: Record<string, FoodEdit>;
   customFoods: CustomFood[];
+  plans: Plan[];
+  activePlan: string | null;
   sessions: Session[];
   summaries: Record<string, { text: string; ts: number; model: string }>; // סיכומי סוף יום מה-AI לפי תאריך
   water: Record<string, number>; // מ״ל לפי תאריך
   hiddenTiles: string[]; // אריחים שהסתרת ממסך ההוספה
-  meta: { createdAt: number; lastBackup?: number };
+  meta: { createdAt: number; lastBackup?: number; onboarded?: boolean };
 }

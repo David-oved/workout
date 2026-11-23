@@ -153,6 +153,11 @@ export function ProgressScreen() {
         </div>
       )}
 
+      <button class="g card pl-card" onClick={() => setUi({ plan: { dayId: null } })}>
+        <Dumbbell />
+        <span class="tx"><b>תוכנית האימונים</b><small>{s.plans.length ? (s.plans.find((x) => x.id === s.activePlan) ?? s.plans[0]).days.map((d) => d.name).join(' · ') : 'בנה או ייבא את התוכנית שלך'}</small></span>
+      </button>
+
       <div class="g card" style={{ padding: '16px 0 4px' }}>
         <div class="ch" style={{ padding: '0 16px' }}><b>אימונים השבוע</b><span class="mu">{weekWorkouts.filter((w) => w.status === 'done').length} מתוך {weekWorkouts.filter((w) => w.status !== 'skipped').length}</span></div>
         {weekWorkouts.length === 0 && <div class="emp">אין אימונים השבוע. אפשר להוסיף מלוח השנה.</div>}

@@ -81,6 +81,17 @@ Rules for "memory": only durable facts he stated or clearly showed that will hel
 Rules for "suggestions": up to 3 very short Hebrew follow-ups he might want next (or [] if none).
 Numeric fields hold numbers only (no units). All text fields are Hebrew.`;
 
+/** בונה את ההנחיה הראשית לפי הפרופיל של המשתמש (גיל, מין ויעד), כדי שהאפליקציה תתאים לכל אחד */
+export function buildSystemPrompt(p: { age: number; heightCm: number; weightKg: number; goalKg: number; sex?: string }): string {
+  const female = p.sex === 'f';
+  const goal = p.goalKg > p.weightKg + 1 ? 'who is building muscle and gaining weight on purpose' : p.goalKg < p.weightKg - 1 ? 'who wants to lose fat while keeping muscle' : 'who wants to maintain weight and build fitness';
+  let s = SYSTEM_PROMPT.replace('a 17-year-old Israeli guy who is building muscle (gaining weight on purpose) and trains about 3 times a week', `a ${p.age}-year-old ${female ? 'woman' : 'guy'} in Israel (${p.heightCm} cm, ${p.weightKg} kg, goal ${p.goalKg} kg) ${goal}`);
+  s = s.replace('SAFETY (he is a minor)', p.age < 18 ? 'SAFETY (the user is a minor)' : 'SAFETY');
+  s = s.replace('For teenagers keep the calorie surplus modest and food-first.', p.age < 18 ? 'For teenagers keep the calorie surplus modest and food-first.' : 'Keep any calorie surplus or deficit modest and food-first.');
+  s += `\nAddress the user in ${female ? 'feminine' : 'masculine'} Hebrew. Everything above that says "he" or "his" refers to the user.`;
+  return s;
+}
+
 const num = (v: unknown, lo: number, hi: number, d = 0) => {
   const n = typeof v === 'string' ? parseFloat(v.replace(',', '.')) : Number(v);
   return Number.isFinite(n) ? Math.min(hi, Math.max(lo, n)) : d;

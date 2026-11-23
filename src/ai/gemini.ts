@@ -1,7 +1,7 @@
 import { createStore } from '../core/store';
 import { uid } from '../core/dates';
 import { store } from '../core/state';
-import { SYSTEM_PROMPT, allowedLevels, isNoQuota, parseAiJson, pickModel, resolveThinking, retryDelayMs, type AiResult, type Source, type Think } from './pure';
+import { buildSystemPrompt, allowedLevels, isNoQuota, parseAiJson, pickModel, resolveThinking, retryDelayMs, type AiResult, type Source, type Think } from './pure';
 
 /**
  * חיבור ל-Gemini ישירות מהדפדפן (ה-API תומך ב-CORS). המפתח נשמר ב-localStorage בלבד, מחוץ לגיבויים.
@@ -317,6 +317,8 @@ function modelOrder(strong: boolean, current: string): string[] {
 }
 
 export interface ChatOpts {
+  system?: string; // הנחיה מותאמת (למשל עריכת תוכנית). בלי זה: מאמן התזונה
+  raw?: boolean; // מחזיר את הטקסט כמו שהוא ב-reply, בלי פענוח של כרטיס ארוחה
   onDelta?: (acc: string) => void;
   web?: boolean; // חיפוש באינטרנט וקריאת קישורים
   deep?: boolean; // חשיבה עמוקה להודעה הזו
@@ -350,7 +352,7 @@ export async function chatTurn(turns: ChatTurn[], opts: ChatOpts = {}): Promise<
       if (hasImages) gen.mediaResolution = 'MEDIA_RESOLUTION_MEDIUM';
     }
     const body: Record<string, unknown> = {
-      systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
+      systemInstruction: { parts: [{ text: opts.system ?? buildSystemPrompt(store.get().settings.profile) }] },
       contents: turns.map((t) => ({
         role: t.role,
         parts: [
@@ -463,7 +465,7 @@ export async function chatTurn(turns: ChatTurn[], opts: ChatOpts = {}): Promise<
           const { acc, blocked } = await stream(model, v);
           if (blocked) throw new Error('הבקשה נחסמה על ידי Gemini. נסה לנסח אחרת');
           if (!acc.trim()) { log.push(`${model}: תשובה ריקה`); continue; }
-          const res = parseAiJson(acc, uid);
+          const res = opts.raw ? ({ reply: acc, items: [], products: [], memory: [], suggestions: [] } as AiResult) : parseAiJson(acc, uid);
           // כשכופים JSON והמודל החזיר שברי טקסט (למשל reply"}), לא מציגים את זה אלא עוברים לנסיון הבא
           if (res.fallback && v.j) { log.push(`${model}: תשובה לא תקינה (לא JSON): ${acc.trim().slice(0, 300)}`); continue; }
           return {
