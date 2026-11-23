@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
-import { Sparkles, Bell, X, Droplets, ListChecks, Minus, Settings as Cog, ChevronLeft, ChevronRight, Plus, Dumbbell, Check, Copy, Download, Siren, RefreshCw, Utensils } from 'lucide-preact';
+import { Sparkles, Bell, X, Droplets, ListChecks, Minus, Settings as Cog, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, ChevronsUpDown, Plus, Dumbbell, Check, Copy, Download, Siren, RefreshCw } from 'lucide-preact';
 import { CountNum } from '../ui/anim';
 import { burst, rain, confetti, floatText } from '../ui/fx';
 import { streakOf } from '../core/streak';
@@ -129,6 +129,21 @@ export function TodayScreen() {
   const s = store.use((x) => x);
   const taps = useRef({ t: 0, n: 0, r: 0 });
   const ringRef = useRef<HTMLDivElement>(null);
+  const scr = useRef<HTMLElement>(null);
+  const raf = useRef(0);
+  // גלילה: הכרטיסים העליונים נסוגים והגיליון עולה מעליהם. --sp = כמה גללנו (0..1)
+  const onScroll = () => {
+    if (raf.current) return;
+    raf.current = requestAnimationFrame(() => {
+      raf.current = 0;
+      const el = scr.current;
+      if (!el) return;
+      const sh = (el.querySelector('.sheetb') as HTMLElement | null)?.offsetTop ?? 600; // כמה צריך לגלול עד שהגיליון נצמד לראש המסך
+      el.style.setProperty('--sp', Math.min(1, el.scrollTop / Math.max(200, sh * 0.6)).toFixed(3));
+      el.style.setProperty('--sk', Math.max(0, Math.min(1, (el.scrollTop - (sh - 80)) / 80)).toFixed(3));
+    });
+  };
+  const peek = () => { const el = scr.current; if (el) el.scrollTo({ top: el.scrollTop < 60 ? 340 : 0, behavior: 'smooth' }); };
   const date = ui.use((u) => u.date);
   const tab = ui.use((u) => u.tab);
   const today = todayKey(s.settings.resetHour);
@@ -175,31 +190,47 @@ export function TodayScreen() {
   };
   const sub = `${DAY_NAMES[dow(date)]} ${dayMonth(date)} · ${info.place === 'dorm' ? 'מעונות' : 'בית'}`;
 
+  // צמצום ארוחות: נשמר במכשיר. חץ ליד כל ארוחה, וכפתור "צמצם הכל" בכותרת
+  const [col, setColS] = useState<string[]>(() => { try { return JSON.parse(localStorage.getItem('wo:col') ?? '[]'); } catch { return []; } });
+  const saveCol = (n: string[]) => { setColS(n); try { localStorage.setItem('wo:col', JSON.stringify(n)); } catch { /* ignore */ } };
+  const allIds = [...slots.map((x) => x.id), ...(orphan.length ? ['__other'] : [])];
+  const allCol = allIds.length > 0 && allIds.every((id) => col.includes(id));
+  const setAllCol = (c: boolean) => saveCol(c ? allIds : []);
+  const toggleCol = (id: string) => saveCol(col.includes(id) ? col.filter((x) => x !== id) : [...col, id]);
+
   const group = (id: string, name: string, time?: string) => {
     const list = id === '__other' ? orphan : info.entries.filter((e) => e.slot === id);
     const kc = list.reduce((a, e) => a + e.k, 0);
+    const isCol = col.includes(id);
     return (
-      <div class="slot" key={id}>
+      <div class={'slot' + (isCol ? ' col' : '')} key={id}>
         <div class="slot-h">
-          <span>{name}{time && <small class="mu" style={{ marginRight: 8 }}>{time}</small>}</span>
+          <button class="sl-t" onClick={() => toggleCol(id)} aria-expanded={!isCol} aria-label={`${isCol ? 'הרחב' : 'צמצם'} ${name}`}>
+            <ChevronDown class="sl-ch" />
+            <span class="sl-n">{name}</span>
+            {time && <small class="mu num">{time}</small>}
+          </button>
           <span class="k">
-            {kc > 0 ? <span class="kpill num">{fmt(kc)} קל׳</span> : <span style={{ color: 'var(--mu2)' }}>עדיין לא</span>}
+            {kc > 0 ? <span class="kpill num">{fmt(kc)} קל׳{isCol && list.length > 1 ? ` · ${list.length}` : ''}</span> : <span class="sl-no">עדיין לא</span>}
             {id !== '__other' && <button class="addmini" aria-label={`הוסף ל${name}`} onClick={() => openAdd(id, date)}><Plus /></button>}
           </span>
         </div>
         {list.length > 0 && (
-          <div class="slot-b">
-            {list.map((e) => (
-              <button class="ent2" key={e.id} onClick={() => setUi({ editEntry: e.id })}>
-                <span class="eic"><Utensils /></span>
-                <span class="etx">
-                  <b>{e.name}{e.est && <i class="etag">הערכה</i>}</b>
-                  {e.parts && e.parts.length > 1 && <span class="esub">{e.parts.map((p) => label(p.name)).join(' · ')}</span>}
-                  <span class="emac num"><i class="mp">{e.p} ח׳</i><i class="mc2">{e.c} פ׳</i><i class="mf">{e.f} ש׳</i></span>
-                </span>
-                <span class="ekc num"><b>{fmt(e.k)}</b><small>קל׳</small></span>
-              </button>
-            ))}
+          <div class="slot-w">
+            <div class="slot-b">
+              <div class="slot-bi">
+                {list.map((e) => (
+                  <button class="ent2" key={e.id} onClick={() => setUi({ editEntry: e.id })}>
+                    <span class="etx">
+                      <b>{e.name}{e.est && <i class="etag">הערכה</i>}</b>
+                      {e.parts && e.parts.length > 1 && <span class="esub">{e.parts.map((p) => label(p.name)).join(' · ')}</span>}
+                      <span class="emac num"><i class="mp">{e.p} ח׳</i><i class="mc2">{e.c} פ׳</i><i class="mf">{e.f} ש׳</i></span>
+                    </span>
+                    <span class="ekc num"><b>{fmt(e.k)}</b></span>
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
         )}
       </div>
@@ -207,7 +238,8 @@ export function TodayScreen() {
   };
 
   return (
-    <section class={'screen' + (tab === 'today' ? ' on' : '')} aria-label="היום">
+    <section class={'screen tdy' + (tab === 'today' ? ' on' : '')} aria-label="היום" ref={scr} onScroll={onScroll}>
+     <div class="stage">
       <div class="hd">
         <div>
           <button class="t" style={{ display: 'block', textAlign: 'right' }} onClick={tapTitle}>{dayLabel(date, today)}</button>
@@ -221,9 +253,10 @@ export function TodayScreen() {
         </div>
       </div>
 
+      <div class="stg-mid">
       <div class={'g hero' + (left < 0 ? ' over' : '')}>
         <div class="hrw" ref={ringRef} onClick={tapRing}>
-          <Ring size={150} stroke={12} pct={eaten.k / target.k} color={left < 0 ? 'var(--warn)' : 'var(--accent)'}>
+          <Ring size={170} stroke={13} pct={eaten.k / target.k} color={left < 0 ? 'var(--warn)' : 'var(--accent)'}>
             <div class="rc">
               <div class="big num"><CountNum v={Math.abs(left)} /></div>
               <div class="mu">{left < 0 ? 'קלוריות מעל היעד' : 'קלוריות נשארו'}</div>
@@ -252,6 +285,16 @@ export function TodayScreen() {
         })}
       </div>
 
+      </div>
+     </div>
+
+     <div class="sheetb">
+      <button class="mbar" onClick={peek} aria-label="עוד מהיום">
+        <i class="mb-h" />
+        <span class="mb-r"><b>{dayLabel(date, today)}</b><small class="mu">{left < 0 ? `${fmt(-left)} קל׳ מעל היעד` : `${fmt(left)} קל׳ נשארו`}{target.p - eaten.p > 0 ? ` · ${target.p - eaten.p} ג׳ חלבון` : ''}</small></span>
+        <span class="mb-c"><ChevronUp /></span>
+      </button>
+      <div class="sb-in">
       {date === today && <Nudges today={today} />}
       {date === today && <Ideas date={date} today={today} />}
 
@@ -268,6 +311,22 @@ export function TodayScreen() {
         </div>
       )}
 
+      <div class="sec">
+        <span>ארוחות</span>
+        <button class="syncb" onClick={() => setAllCol(!allCol)}><ChevronsUpDown />{allCol ? 'הרחב הכל' : 'צמצם הכל'}</button>
+      </div>
+      <div class="g rows">
+        {slots.map((sl) => group(sl.id, sl.name, sl.time))}
+        {orphan.length > 0 && group('__other', 'אחר')}
+      </div>
+      {canCopy && (
+        <button class="btn block" style={{ marginTop: 12 }} onClick={() => {
+          const n = actions.duplicateDay(yesterday, date);
+          toast(`הועתקו ${n} מנות מאתמול`);
+        }}><Copy /> העתק את אתמול</button>
+      )}
+
+      {info.workouts.length > 0 && <div class="sec"><span>אימון</span></div>}
       {info.workouts.map((w) => <WorkoutCard w={w} key={w.id} />)}
 
       <button class="g sumrow" onClick={() => setUi({ summary: date })}>
@@ -307,24 +366,14 @@ export function TodayScreen() {
         <button class="btn block" style={{ marginTop: 12 }} onClick={() => setUi({ workoutSheet: { date } })}><Dumbbell /> הוסף אימון ליום הזה</button>
       )}
 
-      <div class="sec"><span>ארוחות</span></div>
-      <div class="g rows">
-        {slots.map((sl) => group(sl.id, sl.name, sl.time))}
-        {orphan.length > 0 && group('__other', 'אחר')}
-      </div>
-
-      {canCopy && (
-        <button class="btn block" style={{ marginTop: 12 }} onClick={() => {
-          const n = actions.duplicateDay(yesterday, date);
-          toast(`הועתקו ${n} מנות מאתמול`);
-        }}><Copy /> העתק את אתמול</button>
-      )}
       {needBackup && (
         <button class="g card" style={{ width: '100%', marginTop: 12, display: 'flex', alignItems: 'center', gap: 10, textAlign: 'right' }} onClick={() => setUi({ settingsOpen: true })}>
           <Download size={20} color="var(--accent)" />
           <span style={{ flex: 1 }}>עבר יותר משבוע מהגיבוי האחרון<span class="mu" style={{ display: 'block' }}>הנתונים נשמרים רק בטלפון. כדאי לגבות.</span></span>
         </button>
       )}
+      </div>
+     </div>
     </section>
   );
 }
