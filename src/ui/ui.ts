@@ -17,6 +17,7 @@ export interface Ui {
   addView: 'chat' | null;
   editEntry: string | null;
   workoutSheet: { id?: string; date: string } | null;
+  training: { workoutId?: string; date: string; title: string } | null;
   toast: Toast | null;
 }
 
@@ -33,6 +34,7 @@ export const ui = createStore<Ui>({
   addView: null,
   editEntry: null,
   workoutSheet: null,
+  training: null,
   toast: null,
 });
 

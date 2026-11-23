@@ -1,4 +1,4 @@
-import { Settings as Cog, ChevronLeft, ChevronRight, Plus, Dumbbell, Check, Copy, Download, Siren, RefreshCw, Utensils } from 'lucide-preact';
+import { Droplets, ListChecks, Minus, Settings as Cog, ChevronLeft, ChevronRight, Plus, Dumbbell, Check, Copy, Download, Siren, RefreshCw, Utensils } from 'lucide-preact';
 import { EventList } from '../ui/EventList';
 import { bridge, refreshEvents, syncWorkouts } from '../core/bridge';
 import { conflictsFor, eventsOn, hhmm, suggestSlot } from '../core/conflicts';
@@ -27,6 +27,9 @@ export function WorkoutCard({ w }: { w: Workout }) {
         <b>{w.title}</b>
         <span class="mu">{w.time} · {done ? 'בוצע' : skipped ? 'בוטל' : 'מתוכנן'}</span>
       </div>
+      {w.status !== 'skipped' && (
+        <button class="btn sm tlog" aria-label="יומן אימון" onClick={(e) => { e.stopPropagation(); setUi({ training: { workoutId: w.id, date: w.date, title: w.title } }); }}><ListChecks />{done ? 'יומן' : 'רשום'}</button>
+      )}
       {w.status === 'planned' && (
         <button
           class="btn primary sm"
@@ -57,6 +60,7 @@ export function TodayScreen() {
   const agoTxt = evAt ? (Math.round((Date.now() - evAt) / 60000) < 1 ? 'עודכן הרגע' : `עודכן לפני ${Math.round((Date.now() - evAt) / 60000)} דק׳`) : 'סנכרן';
   const dayEv = eventsOn(ext, date);
   const { target, eaten } = info;
+  const waterGoal = Math.round((s.settings.profile.weightKg * 35) / 250) * 250 + (info.training ? 500 : 0);
   const left = target.k - eaten.k;
   const slots = s.settings.slots;
   const known = new Set(slots.map((x) => x.id));
@@ -140,6 +144,17 @@ export function TodayScreen() {
             </div>
           );
         })}
+      </div>
+
+      <div class="g wtr">
+        <Droplets />
+        <div class="tx">
+          <b>מים</b>
+          <span class="mu num">{((s.water[date] ?? 0) / 1000).toFixed(2)} מתוך {(waterGoal / 1000).toFixed(1)} ליטר</span>
+          <div class="wbar"><i style={{ width: Math.min(100, ((s.water[date] ?? 0) / waterGoal) * 100) + '%' }} /></div>
+        </div>
+        <button class="wb" aria-label="הפחת כוס" onClick={() => actions.addWater(date, -250)}><Minus /></button>
+        <button class="wb pl" aria-label="הוסף כוס" onClick={() => actions.addWater(date, 250)}><Plus /><small>250</small></button>
       </div>
 
       {info.workouts.map((w) => <WorkoutCard w={w} key={w.id} />)}

@@ -691,3 +691,42 @@ select.inp{background-image:none}
 .cam-err{position:absolute;left:24px;right:24px;top:40%;text-align:center;color:#fff;line-height:1.6;font-size:15px}
 
 .as-ih .nm .ug{font-size:11.5px;color:var(--mu);margin-inline-start:8px;font-weight:400}
+
+/* ===== מים, יומן אימון, סקירה שבועית ===== */
+.wtr{display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:22px;margin-top:12px}
+.wtr>svg{width:24px;height:24px;color:#7CC4FF;flex:none}
+.wtr .tx{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.wtr .tx b{font-size:15px;font-weight:500}
+.wbar{height:5px;border-radius:3px;background:rgba(255,255,255,.1);margin-top:5px;overflow:hidden}
+.wbar i{display:block;height:100%;background:#7CC4FF;border-radius:3px;transition:width .5s var(--ease)}
+.wb{width:38px;height:38px;border-radius:50%;background:rgba(255,255,255,.1);display:flex;align-items:center;justify-content:center;flex:none}
+.wb svg{width:16px;height:16px}
+.wb.pl{width:auto;min-width:64px;padding:0 12px;border-radius:19px;gap:4px;background:rgba(124,196,255,.2);color:#7CC4FF}
+.wb.pl small{font-size:12px}
+.tlog{display:inline-flex;align-items:center;gap:5px;background:rgba(255,255,255,.09)!important;margin-inline-end:6px}
+.tlog svg{width:14px;height:14px}
+.tr-ex{padding:12px 14px;border-radius:22px;margin-bottom:10px}
+.tr-h{display:flex;align-items:center;gap:8px}
+.tr-h b{flex:1;min-width:0;font-size:16px;font-weight:600}
+.tr-pr{display:inline-flex;align-items:center;gap:4px;font-size:11.5px;color:#F5C26B;background:rgba(245,194,107,.14);padding:3px 8px;border-radius:10px}
+.tr-pr svg{width:12px;height:12px}
+.tr-prev{font-size:12px;color:var(--mu);margin:4px 0 8px}
+.tr-set{display:flex;align-items:center;gap:8px;padding:5px 0}
+.tr-set .n{width:22px;text-align:center;color:var(--mu2);font-size:13px}
+.tr-set .amt{flex:1;justify-content:space-between}
+.tr-set .amt input{width:46px}
+.tr-add{display:flex;align-items:center;justify-content:center;gap:6px;width:100%;height:36px;margin-top:6px;border-radius:18px;background:rgba(255,255,255,.07);font-size:13px;color:var(--mu)}
+.tr-add svg{width:14px;height:14px}
+.tr-find{padding:10px 12px;border-radius:22px;display:flex;flex-direction:column;gap:6px}
+.tr-find button{display:flex;align-items:center;gap:8px;height:40px;padding:0 10px;border-radius:12px;background:rgba(255,255,255,.06);text-align:right;font-size:14px}
+.tr-find button svg{width:15px;height:15px;color:var(--accent)}
+.tr-find button small{margin-inline-start:auto;color:var(--mu);font-size:12px}
+.tr-foot{position:absolute;left:0;right:0;bottom:0;padding:12px 18px max(18px,env(safe-area-inset-bottom));background:linear-gradient(0deg,rgba(14,16,20,.98) 60%,rgba(14,16,20,0))}
+.rv .ch b,.card .ch b svg{display:inline-flex;align-items:center;gap:6px}
+.ch b svg{width:16px;height:16px;vertical-align:-2px;margin-inline-end:6px;color:var(--accent)}
+.rv-l{display:flex;gap:10px;align-items:flex-start;font-size:14px;line-height:1.5;padding:6px 0}
+.rv-l i{width:8px;height:8px;border-radius:50%;margin-top:7px;flex:none;background:var(--mu2)}
+.rv-l.good i{background:#5CE1A8}
+.rv-l.warn i{background:#F5C26B}
+.rec-r{display:flex;justify-content:space-between;padding:8px 0;border-bottom:.5px solid var(--line);font-size:14px}
+.rec-r:last-child{border:0}

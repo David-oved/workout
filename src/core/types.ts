@@ -66,6 +66,10 @@ export interface Workout {
   routineId?: string;
 }
 export interface Routine { id: string; dow: number; time: string; title: string }
+export interface SetLog { kg: number; reps: number }
+export interface ExLog { name: string; sets: SetLog[] }
+/** אימון שנרשם בפועל: תרגילים, סטים, משקל וחזרות */
+export interface Session { id: string; date: string; title: string; workoutId?: string; exercises: ExLog[]; ts: number }
 export interface Weigh { date: string; kg: number }
 
 export interface Profile { age: number; heightCm: number; weightKg: number; goalKg: number; pace: 'slow' | 'mid' | 'fast' }
@@ -101,6 +105,8 @@ export interface State {
   dishes: Dish[];
   foodEdits: Record<string, FoodEdit>;
   customFoods: CustomFood[];
+  sessions: Session[];
+  water: Record<string, number>; // מ״ל לפי תאריך
   hiddenTiles: string[]; // אריחים שהסתרת ממסך ההוספה
   meta: { createdAt: number; lastBackup?: number };
 }

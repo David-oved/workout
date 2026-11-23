@@ -44,6 +44,8 @@ export function defaultState(): State {
     foodEdits: {},
     customFoods: [],
     hiddenTiles: [],
+    sessions: [],
+    water: {},
     meta: { createdAt: Date.now() },
   };
 }
@@ -75,6 +77,8 @@ function migrate(raw: any): State {
     foodEdits: raw.foodEdits && typeof raw.foodEdits === 'object' ? raw.foodEdits : {},
     customFoods: Array.isArray(raw.customFoods) ? raw.customFoods : [],
     hiddenTiles: Array.isArray(raw.hiddenTiles) ? raw.hiddenTiles : [],
+    sessions: Array.isArray(raw.sessions) ? raw.sessions : [],
+    water: raw.water && typeof raw.water === 'object' ? raw.water : {},
     meta: { ...base.meta, ...(raw.meta ?? {}) },
     schema: SCHEMA,
   };

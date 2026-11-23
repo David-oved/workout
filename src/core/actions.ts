@@ -1,5 +1,5 @@
 import { update } from './state';
-import type { Dish, Entry, Food, FoodEdit, CustomFood, Routine, Settings, Workout, WorkoutStatus } from './types';
+import type { Session, Dish, Entry, Food, FoodEdit, CustomFood, Routine, Settings, Workout, WorkoutStatus } from './types';
 import { addDays, todayKey, uid } from './dates';
 import { ensureWorkouts } from './state';
 
@@ -60,6 +60,15 @@ export const actions = {
     update((s) => ({ ...s, customFoods: s.customFoods.filter((x) => x.id !== id) }));
   },
 
+  saveSession(x: Session) {
+    update((s) => ({ ...s, sessions: s.sessions.some((y) => y.id === x.id) ? s.sessions.map((y) => (y.id === x.id ? x : y)) : [...s.sessions, x] }));
+  },
+  deleteSession(id: string) {
+    update((s) => ({ ...s, sessions: s.sessions.filter((y) => y.id !== id) }));
+  },
+  addWater(date: string, ml: number) {
+    update((s) => ({ ...s, water: { ...s.water, [date]: Math.max(0, (s.water[date] ?? 0) + ml) } }));
+  },
   hideTile(key: string) {
     update((s) => ({ ...s, hiddenTiles: s.hiddenTiles.includes(key) ? s.hiddenTiles : [...s.hiddenTiles, key] }));
   },

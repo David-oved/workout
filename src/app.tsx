@@ -1,6 +1,7 @@
 import { useEffect } from 'preact/hooks';
 import { Dock, ToastView, UpdateBanner } from './ui/components';
 import { CameraView } from './ui/CameraView';
+import { TrainingSheet } from './screens/Training';
 import { TodayScreen } from './screens/Today';
 import { AddScreen } from './screens/Add';
 import { ProgressScreen } from './screens/Progress';
@@ -38,6 +39,7 @@ export function App() {
       <SettingsScreen />
       <EditEntrySheet />
       <WorkoutSheet />
+      <TrainingSheet />
       <CameraView />
       <ToastView />
       <UpdateBanner />

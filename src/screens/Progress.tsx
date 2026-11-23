@@ -1,10 +1,14 @@
 import { useState } from 'preact/hooks';
-import { Settings as Cog, Scale, Check, Dumbbell } from 'lucide-preact';
+import { Settings as Cog, Scale, Check, Dumbbell, Sparkles, Trophy, TrendingUp } from 'lucide-preact';
 import { store } from '../core/state';
 import { actions } from '../core/actions';
 import { dayInfo, fmt } from '../core/calc';
 import { DAY_NAMES, DAY_SHORT, addDays, dow, todayKey, weekStart } from '../core/dates';
-import { ui, setUi, toast } from '../ui/ui';
+import { ui, setUi, toast, openAdd } from '../ui/ui';
+import { aiState } from '../ai/gemini';
+import { sendMessage } from '../ai/chat';
+import { shiftTargets, weeklyReview } from '../core/review';
+import { e1rm } from '../data/exercises';
 
 export function ProgressScreen() {
   const s = store.use((x) => x);
@@ -53,6 +57,28 @@ export function ProgressScreen() {
     toast(`נשמר: ${v} ק״ג`);
   };
 
+  const review = weeklyReview(s, today);
+  const aiOn = aiState.use((x) => x.configured);
+  const applyShift = (d: number) => {
+    const before = s.settings.targets;
+    actions.saveSettings({ targets: shiftTargets(before, d) });
+    toast(`יעד הקלוריות ${d > 0 ? "עלה" : "ירד"} ב-${Math.abs(d)}`, () => actions.saveSettings({ targets: before }));
+  };
+  const askAi = () => {
+    openAdd(undefined, undefined, 'chat');
+    if (aiOn) void sendMessage('תן לי סקירה שבועית: האם אני בקצב הנכון לעלייה במשקל, מה לשפר באכילה ובאימונים, ומה הצעד הכי חשוב לשבוע הקרוב?', []);
+  };
+  const records = (() => {
+    const best = new Map<string, { kg: number; reps: number; date: string; e: number }>();
+    for (const se of s.sessions) for (const ex of se.exercises) for (const st of ex.sets) {
+      if (st.kg <= 0) continue;
+      const e = e1rm(st.kg, st.reps);
+      const cur = best.get(ex.name);
+      if (!cur || e > cur.e) best.set(ex.name, { kg: st.kg, reps: st.reps, date: se.date, e });
+    }
+    return [...best.entries()].sort((a, b) => b[1].date.localeCompare(a[1].date)).slice(0, 6);
+  })();
+
   const weekWorkouts = s.workouts.filter((w) => w.date >= ws && w.date <= addDays(ws, 6)).sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time));
 
   return (
@@ -60,6 +86,15 @@ export function ProgressScreen() {
       <div class="hd">
         <div><div class="t">התקדמות</div><div class="s">היעד: {goal} ק״ג · עכשיו {last.kg}</div></div>
         <button class="g ib" aria-label="הגדרות" onClick={() => setUi({ settingsOpen: true })}><Cog /></button>
+      </div>
+
+      <div class="g card rv">
+        <div class="ch"><b><TrendingUp />סקירה שבועית</b><span class="mu">14 ימים אחרונים</span></div>
+        {review.lines.map((l, i) => <div class={'rv-l ' + l.tone} key={i}><i />{l.text}</div>)}
+        {review.action && (
+          <button class="btn primary block" style={{ marginTop: 12 }} onClick={() => applyShift(review.action!.deltaK)}>{review.action.label}</button>
+        )}
+        <button class="btn block" style={{ marginTop: 8 }} onClick={askAi}><Sparkles />סכם לי עם ה-AI</button>
       </div>
 
       <div class="g card">
@@ -108,6 +143,15 @@ export function ProgressScreen() {
           </button>
         )}
       </div>
+
+      {records.length > 0 && (
+        <div class="g card">
+          <div class="ch"><b><Trophy />שיאים בתרגילים</b><span class="mu">הסט הטוב ביותר</span></div>
+          {records.map(([name, r]) => (
+            <div class="rec-r" key={name}><span>{name}</span><span class="num">{r.kg} ק״ג × {r.reps}</span></div>
+          ))}
+        </div>
+      )}
 
       <div class="g card" style={{ padding: '16px 0 4px' }}>
         <div class="ch" style={{ padding: '0 16px' }}><b>אימונים השבוע</b><span class="mu">{weekWorkouts.filter((w) => w.status === 'done').length} מתוך {weekWorkouts.filter((w) => w.status !== 'skipped').length}</span></div>
