@@ -151,7 +151,8 @@ export async function syncWorkouts(force = false) {
     .filter((w) => w.date >= from && w.date <= to)
     .map((w) => ({ id: w.id, title: w.title, date: w.date, time: w.time, status: w.status, durationMin: WORKOUT_MIN }))
     .sort((a, b) => (a.date + a.time + a.id).localeCompare(b.date + b.time + b.id));
-  const reminders = buildReminders(s, from, to);
+  // כש-Push פעיל התזכורות מגיעות משם, ובמקום זה ביומן נשארים רק האימונים
+  const reminders = get('wo:push-id') ? [] : buildReminders(s, from, to);
   const payload = { key, action: 'sync', from, to, alertMin: s.settings.cal.alertMin, workouts: [...workouts, ...reminders] };
   const hash = JSON.stringify([payload.workouts, payload.alertMin, from]);
   if (!force && get(HASH_KEY) === hash) return;
@@ -186,7 +187,7 @@ export function startBridge() {
   store.subscribe(() => {
     if (!bridge.get().connected) return;
     const s = store.get();
-    const key = JSON.stringify([s.workouts, s.settings.cal.alertMin, reminderKey(s)]);
+    const key = JSON.stringify([s.workouts, s.settings.cal.alertMin, reminderKey(s), get('wo:push-id')]);
     if (key === last) return;
     last = key;
     clearTimeout(t);

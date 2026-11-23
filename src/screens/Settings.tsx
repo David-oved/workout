@@ -11,6 +11,8 @@ import { allowedLevels, modelHint, resolveThinking, THINK_LABELS, type Think } f
 import { addDoc, docsState, loadDocs, removeDoc, toggleDoc } from '../ai/docs';
 import { AiSetup } from './AiChat';
 import { bridge, scriptSource, pingBridge, connectBridge, disconnectBridge, refreshEvents, syncWorkouts } from '../core/bridge';
+import { push, enablePush, disablePush, testPush } from '../push/push';
+import { syncWorkouts as syncCal } from '../core/bridge';
 import { feedState, feedUrl, webcalUrl, hasToken, verifyToken, saveToken, enableFeed, disconnectFeed, syncFeed } from '../core/calfeed';
 import { FullScreen, Sheet } from '../ui/components';
 import { exportBackup, importBackup } from '../core/backup';
@@ -69,6 +71,7 @@ function SettingsBody() {
   const [busy, setBusy] = useState(false);
   const [tokErr, setTokErr] = useState('');
   const br = bridge.use((x) => x);
+  const pu = push.use((x) => x);
   const aiS = aiState.use((x) => x);
   const docsS = docsState.use((x) => x);
   useEffect(() => { void loadDocs(); }, []);
@@ -239,6 +242,32 @@ function SettingsBody() {
           const syncNow = async () => { await syncWorkouts(true); toast(bridge.get().syncStatus === 'error' ? 'הסנכרון נכשל. בדוק חיבור' : 'התזכורות עודכנו ביומן'); };
           return (
             <>
+              <div class="sec"><span>התראות Push (מומלץ)</span></div>
+              <div class="g rows" style={{ padding: '14px 16px' }}>
+                {pu.support === 'nourl' && <div style={{ fontSize: 15, lineHeight: 1.6 }}>שרת ההתראות עוד לא הוגדר באפליקציה הזו.</div>}
+                {pu.support === 'ios-install' && <div style={{ fontSize: 15, lineHeight: 1.6 }}>באייפון התראות עובדות רק כשהאפליקציה במסך הבית: ב-Safari לחץ על שיתוף ← "הוסף למסך הבית", ואז פתח אותה משם והפעל כאן.</div>}
+                {pu.support === 'unsupported' && <div style={{ fontSize: 15, lineHeight: 1.6 }}>הדפדפן הזה לא תומך בהתראות Push.</div>}
+                {pu.support === 'ok' && (
+                  <>
+                    <div style={{ fontSize: 15, lineHeight: 1.6 }}>
+                      {pu.on ? 'פעילות. ההתראות מגיעות בשעה המדויקת ישירות מהאפליקציה, גם כשהיא סגורה. כשהן פעילות, התזכורות לא נכתבות ליומן (האימונים כן).' : 'הפעל כדי לקבל ארוחות, שקילה, סגירת יום ואימונים כהתראה ישירה מהאפליקציה, גם כשהיא סגורה.'}
+                    </div>
+                    <div style={{ display: 'flex', gap: 10, marginTop: 12 }}>
+                      {pu.on ? (
+                        <>
+                          <button class="btn primary" style={{ flex: 1 }} disabled={pu.busy} onClick={() => void testPush()}>שלח התראת בדיקה</button>
+                          <button class="btn" disabled={pu.busy} onClick={async () => { await disablePush(); void syncCal(true); }}>כבה</button>
+                        </>
+                      ) : (
+                        <button class="btn primary block" disabled={pu.busy} onClick={async () => { await enablePush(); void syncCal(true); }}>{pu.busy ? 'מפעיל…' : 'הפעל התראות'}</button>
+                      )}
+                    </div>
+                    {pu.msg && <div class="note" style={{ margin: '10px 0 0' }}>{pu.msg}</div>}
+                  </>
+                )}
+              </div>
+
+              <div class="sec"><span>דרך יומן Google (חלופה)</span></div>
               <div class="g rows" style={{ padding: '14px 16px' }}>
                 <div style={{ fontSize: 15, lineHeight: 1.6 }}>
                   {br.connected ? 'התזכורות נשלחות ליומן Google שלך כאירועים עם התראה, ולכן מגיעות לאייפון גם כשהאפליקציה סגורה (דרך אפליקציית Google Calendar או היומן של אפל).' : 'התזכורות נשלחות דרך Google Calendar, כדי שיגיעו לאייפון גם כשהאפליקציה סגורה. חבר קודם את היומן.'}

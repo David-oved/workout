@@ -4,3 +4,8 @@ dist
 *.local
 .DS_Store
 scripts/il-raw.json
+
+# workOut push
+push-worker/.dev.vars
+push-worker/node_modules
+push-worker/.wrangler

@@ -35,6 +35,29 @@ export function buildReminders(s: State, from: string, to: string, now = new Dat
   return out;
 }
 
+export interface PushItem { id: string; at: number; title: string; body: string }
+const localMs = (date: string, time: string) => { const [y, m, d] = date.split('-').map(Number); const [h, mi] = time.split(':').map(Number); return new Date(y, m - 1, d, h, mi).getTime(); };
+
+/** לוח ההתראות לשרת ה-Push: תזכורות + התראה לפני כל אימון, בשעות מוחלטות */
+export function buildSchedule(s: State, now = new Date()): PushItem[] {
+  const today = todayKey(s.settings.resetHour);
+  const to = addDays(today, HORIZON);
+  const out: PushItem[] = [];
+  for (const r of buildReminders(s, today, to, now)) {
+    const kind = r.id.split(':')[1];
+    const [title, body] = r.title.includes(': ') ? r.title.split(': ') : [r.title, ''];
+    const b = kind === 'm' ? 'רשום מה אכלת' : kind === 'w' ? 'עדיף בבוקר, לפני אוכל ושתייה' : kind === 'c' ? 'חסר משהו ביומן של היום?' : body;
+    out.push({ id: r.id, at: localMs(r.date, r.time), title: kind === 'c' ? '📝 סגירת יום' : title, body: b });
+  }
+  const lead = s.settings.cal.alertMin > 0 ? s.settings.cal.alertMin : 30;
+  for (const w of s.workouts) {
+    if (w.status !== 'planned' || w.date < today || w.date > to) continue;
+    const at = localMs(w.date, w.time) - lead * 60000;
+    if (at > now.getTime()) out.push({ id: `wk:${w.id}`, at, title: `🏋 ${w.title}`, body: `מתחיל ב-${w.time}` });
+  }
+  return out.sort((a, b) => a.at - b.at);
+}
+
 /** מפתח שמשתנה רק כשהתזכורות צריכות להשתנות (הגדרות, ארוחות, מה נרשם היום) */
 export function reminderKey(s: State): string {
   const today = todayKey(s.settings.resetHour);

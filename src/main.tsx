@@ -4,6 +4,7 @@ import { loadState } from './core/state';
 import { initUpdater } from './update/updater';
 import { startFeedSync } from './core/calfeed';
 import { startBridge } from './core/bridge';
+import { startPush } from './push/push';
 
 const started = performance.now();
 
@@ -15,6 +16,7 @@ async function boot() {
   initUpdater();
   startFeedSync();
   startBridge();
+  startPush();
 
   // אנימציית הפתיחה: מינימום ~1.7 שניות כדי שתושלם, ואז דועכת
   const splash = document.getElementById('splash');

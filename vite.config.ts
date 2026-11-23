@@ -66,6 +66,7 @@ export default defineConfig({
         navigateFallback: `${BASE}index.html`,
         cleanupOutdatedCaches: true,
         clientsClaim: true,
+        importScripts: ['push-sw.js'],
       },
     }),
   ],

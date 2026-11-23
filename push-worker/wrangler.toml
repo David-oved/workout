@@ -1,0 +1,14 @@
+name = "workout-push"
+main = "src/index.js"
+compatibility_date = "2025-01-01"
+
+[vars]
+VAPID_PUBLIC = "BDmKEBHEglMvLz96wTaCwMXWXDxrvuEDtk624-bduVUbcmluOkyGSXuhYvN__zSa4ixt_vQC3qyuXU356htkqvo"
+
+[triggers]
+crons = ["* * * * *"]
+
+# ה-id נוצר ב: npx wrangler kv namespace create SUBS
+[[kv_namespaces]]
+binding = "SUBS"
+id = "a6c50ff0199b433d91c5bb6a349cee4e"
