@@ -16,6 +16,7 @@ import { syncWorkouts as syncCal } from '../core/bridge';
 import { feedState, feedUrl, webcalUrl, hasToken, verifyToken, saveToken, enableFeed, disconnectFeed, syncFeed } from '../core/calfeed';
 import { FullScreen, Sheet } from '../ui/components';
 import { exportBackup, importBackup } from '../core/backup';
+import { clearLog, fmtSnap, readLog, snapshot } from '../viewportLog';
 import { APP_VERSION, BUILD_ID, updater, checkForUpdate, applyUpdate } from '../update/updater';
 import type { Macros, Profile, TargetKey } from '../core/types';
 
@@ -62,6 +63,25 @@ function diag() {
   probe.remove();
   const sa = (navigator as any).standalone === true || matchMedia('(display-mode: standalone)').matches;
   return `חלון ${innerWidth}×${innerHeight} · מסך ${screen.width}×${screen.height} · safe ${t}/${b} · ${sa ? 'מסך הבית' : 'דפדפן'}`;
+}
+
+/** יומן גובה המסך: מה iOS דיווח ומתי השתנה. אם יש רווח שחור, הפער (gap) יהיה בערך 62 */
+function VpLog() {
+  const [, setN] = useState(0);
+  const now = snapshot('now');
+  const log = readLog().slice(-14).reverse();
+  const text = [fmtSnap(now), '--- log ---', ...readLog().reverse().map(fmtSnap)].join('\n');
+  return (
+    <div class="g card" style={{ marginTop: 10 }}>
+      <div class="mu" style={{ fontSize: 12.5, marginBottom: 6 }}>אבחון גובה המסך. אם יש רווח שחור למטה, כתוב לי את השורה הראשונה (gap)</div>
+      <pre class="adet" style={{ direction: 'ltr', textAlign: 'left', maxHeight: 220, overflow: 'auto', whiteSpace: 'pre-wrap', fontSize: 10.5, margin: 0 }}>{[fmtSnap(now), ...log.map(fmtSnap)].join('\n')}</pre>
+      <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+        <button class="btn sm" onClick={() => setN((n) => n + 1)}>רענן</button>
+        <button class="btn sm" onClick={async () => { try { await navigator.clipboard.writeText(text); toast('הועתק'); } catch { toast('ההעתקה נכשלה'); } }}>העתק הכל</button>
+        <button class="btn sm" onClick={() => { clearLog(); setN((n) => n + 1); }}>נקה</button>
+      </div>
+    </div>
+  );
 }
 
 function SettingsBody() {
@@ -777,6 +797,7 @@ function SettingsBody() {
             </div>
             <div class="sec"><span><Info size={14} style={{ verticalAlign: -2 }} /> אבחון מסך</span></div>
             <div class="g card mu num" style={{ fontSize: 12, lineHeight: 1.6 }}>{diag()}</div>
+            <VpLog />
           </>
         )}
       </div>
