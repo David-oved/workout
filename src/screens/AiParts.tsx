@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
-import { Check, Undo2, Globe, Brain, FileText } from 'lucide-preact';
+import { Check, Undo2, Globe, Brain, FileText, Trash } from 'lucide-preact';
 import { chat, pendingProducts, retryLast, undoAdd } from '../ai/chat';
 import { ProductCard } from './ProductCard';
 import { Md } from './AiChat';
@@ -85,6 +85,7 @@ export function Messages({ onSuggest }: { onSuggest: (t: string) => void }) {
               <div class="srcs">{m.sources.map((s) => <a class="src" href={s.uri} target="_blank" rel="noopener"><Globe />{s.title}</a>)}</div>
             ) : null}
             {m.webFailed && <div class="mu" style={{ fontSize: 12, margin: '0 6px' }}>החיפוש באינטרנט לא זמין כרגע, אז זו תשובה בלי מקורות.</div>}
+            {m.removed?.length ? <div class="remb del">{m.removed.map((r) => <span><Trash />נמחק מהיום: {r}</span>)}</div> : null}
             {m.remembered?.length ? <div class="remb">{m.remembered.map((r) => <span><Brain />נשמר בזיכרון: {r}</span>)}</div> : null}
             {m.meta && <div class="mu num" style={{ fontSize: 11, margin: '0 6px', direction: 'ltr' }}>{m.meta.model} · {(m.meta.ms / 1000).toFixed(1)}s{m.meta.thinking ? ` · think:${m.meta.thinking}` : ''}{m.meta.web ? ' · web' : ''}</div>}
             {pendingProducts(m).length > 0 && (m.card === 'draft'
@@ -97,6 +98,7 @@ export function Messages({ onSuggest }: { onSuggest: (t: string) => void }) {
                 <div class="mu num" style={{ marginTop: 6 }}>{m.items?.map((i) => `${i.name} ${i.grams} ג׳`).join(' · ')}</div>
               </div>
             )}
+            {m.card === 'removed' && <div class="mu" style={{ fontSize: 12, margin: '4px 6px' }}>הארוחה נמחקה מהיום</div>}
             {m.card === 'old' && <div class="mu" style={{ fontSize: 12, margin: '4px 6px' }}>הארוחה עודכנה בהודעה הבאה</div>}
           </div>
         </div>

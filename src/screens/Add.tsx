@@ -351,11 +351,11 @@ export function AddScreen() {
           <>
             <div class="as-chatbar">
               <button class="as-back" onClick={() => setView('tiles')}><ChevronRight size={16} />חזרה</button>
-              <span class="as-tgs">
-                <button class={'tg' + (ch.web ? ' on' : '')} onClick={() => setWeb(!ch.web)}><Globe />אינטרנט</button>
-                <button class={'tg' + (ch.deep ? ' on' : '')} onClick={() => setDeep(!ch.deep)}><Brain />עמוק</button>
-              </span>
               <button class="as-new" onClick={newChat}><MessageSquarePlus />שיחה חדשה</button>
+            </div>
+            <div class="as-tgs row">
+              <button class={'tg' + (ch.web ? ' on' : '')} onClick={() => setWeb(!ch.web)}><Globe />אינטרנט</button>
+              <button class={'tg' + (ch.deep ? ' on' : '')} onClick={() => setDeep(!ch.deep)}><Brain />עמוק</button>
             </div>
             {!configured && <AiSetup />}
             {configured && ch.messages.length === 0 && (

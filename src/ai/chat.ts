@@ -24,7 +24,8 @@ export interface Msg {
   fileNames?: string[]; // קבצי PDF שצורפו להודעה
   sent?: AiItem[]; // מה שה-AI החזיר (להיסטוריית השיחה)
   items?: AiItem[]; // הכרטיס הנוכחי (ניתן לעריכה)
-  card?: 'draft' | 'added' | 'old';
+  card?: 'draft' | 'added' | 'old' | 'removed';
+  removed?: string[]; // מנות שה-AI מחק מהיום לבקשתך
   edited?: boolean;
   addedIds?: string[];
   addedLabel?: string;
@@ -96,6 +97,13 @@ function clearStages() {
 export const setWeb = (v: boolean) => chat.set((s) => ({ ...s, web: v }));
 export const setDeep = (v: boolean) => chat.set((s) => ({ ...s, deep: v }));
 
+const normName = (n: string) => n.replace(/[^\p{L}\p{N}]/gu, '').toLowerCase();
+/** האם שתי רשימות מייצגות אותה ארוחה (אותם שמות, כמויות דומות) */
+function sameMeal(a: AiItem[], b: AiItem[]) {
+  if (!a.length || a.length !== b.length) return false;
+  return a.every((x) => b.some((y) => normName(x.name) === normName(y.name) && Math.abs(x.grams - y.grams) <= Math.max(5, y.grams * 0.12)));
+}
+
 export const draftOf = (msgs: Msg[]) => [...msgs].reverse().find((m) => m.card === 'draft');
 
 const stripId = ({ id: _id, ...rest }: AiItem) => rest;
@@ -112,7 +120,7 @@ function buildTurns(msgs: Msg[], lib: Lib, hints: string): ChatTurn[] {
       const note = !files && (m.images?.length || m.fileNames?.length) ? ' (צורף קובץ קודם)' : '';
       return { role: 'user', text: m.text + note + (m.hint ? `\n\n${m.hint}` : ''), images: files };
     }
-    const items = m.items ?? m.sent ?? [];
+    const items = m.card === 'added' || m.card === 'removed' ? [] : (m.items ?? m.sent ?? []);
     const prods = (m.products ?? []).filter((p) => p.status === 'pending').map(({ id: _i, status: _s, ...p }) => p);
     return { role: 'model', text: JSON.stringify({ reply: m.text, items: items.map(stripId), ...(prods.length ? { products: prods } : {}) }) };
   });
@@ -132,6 +140,10 @@ function buildTurns(msgs: Msg[], lib: Lib, hints: string): ChatTurn[] {
       const lines = manual.map((i) => `- ${i.name}: ${i.unit === 'g' ? `${Math.round(i.amount)} g` : `${i.amount} portion`} (about ${macrosOf(i).k} kcal, ${macrosOf(i).p}g protein)`);
       last.text += `\n\n[ALSO IN THE USER'S MEAL TRAY, added by tapping tiles, not part of your card]\n${lines.join('\n')}`;
     }
+    // ארוחות שכבר נוספו ליום בשיחה הזאת: ה-AI לא מחזיר אותן שוב לכרטיס
+    const live = new Set(store.get().entries.map((e) => e.id));
+    const addedLines = msgs.filter((m) => m.card === 'added' && m.addedIds?.some((id) => live.has(id))).map((m) => `- ${m.addedLabel ?? ''}: ${(m.items ?? []).map((i) => `${i.name} ${i.grams}g`).join(', ')}`);
+    if (addedLines.length) last.text += `\n\n[ALREADY ADDED TO HIS DAY FROM THIS CHAT]\n${addedLines.join('\n')}`;
     if (hints) last.text += `\n\n${hints}`;
     last.text += `\n\n${nowBlock()}\n\n${buildAppData(ui.get().addDate)}`;
   }
@@ -198,6 +210,16 @@ async function runTurn() {
       ];
       try { res = await chatTurn(fixTurns, callOpts); } catch { /* נשארים עם התשובה הראשונה */ }
     }
+    // ה-AI חזר עם אותה ארוחה שכבר נוספה? לא פותחים כרטיס כפול
+    const lastCard = [...chat.get().messages].reverse().find((m) => m.card === 'added' || m.card === 'draft');
+    if (lastCard?.card === 'added' && res.items.length && sameMeal(res.items, lastCard.items ?? [])) res = { ...res, items: [] };
+    // מחיקת רשומות מהיום לבקשת המשתמש (עם ביטול)
+    const rmIds = (res.remove ?? []).filter((id) => store.get().entries.some((e) => e.id === id));
+    const gone = store.get().entries.filter((e) => rmIds.includes(e.id));
+    if (gone.length) {
+      actions.removeEntries(rmIds);
+      toast(`נמחקו ${gone.length} מנות מהיום`, () => { gone.forEach((e) => actions.addEntry(e)); });
+    }
     const remembered = saveMemory(res.memory);
     clearStages();
     setChat((s) => {
@@ -214,7 +236,9 @@ async function runTurn() {
         suggestions: res.suggestions.length ? res.suggestions : undefined,
         webFailed: res.webFailed || undefined,
         products: res.products.length ? res.products.map((p) => ({ ...p, status: 'pending' as const })) : undefined,
+        removed: gone.length ? gone.map((e) => e.name) : undefined,
       };
+      if (rmIds.length) msgs = msgs.map((m) => (m.addedIds?.some((id) => rmIds.includes(id)) ? { ...m, card: 'removed' as const, addedIds: undefined } : m));
       if (res.items.length) {
         const prev = msgs.map((m, i) => [m, i] as const).reverse().find(([m]) => m.card === 'draft');
         if (prev) msgs[prev[1]] = { ...prev[0], items: undefined, card: 'old' };
