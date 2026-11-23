@@ -689,3 +689,5 @@ select.inp{background-image:none}
 .cam-shot:active span{transform:scale(.88)}
 .cam-shot:disabled{opacity:.4}
 .cam-err{position:absolute;left:24px;right:24px;top:40%;text-align:center;color:#fff;line-height:1.6;font-size:15px}
+
+.as-ih .nm .ug{font-size:11.5px;color:var(--mu);margin-inline-start:8px;font-weight:400}

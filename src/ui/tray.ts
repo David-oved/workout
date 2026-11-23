@@ -25,6 +25,7 @@ export interface TItem {
   conf?: 'high' | 'medium' | 'low';
   foodId?: string; // il:… / x:… / b:… / c:… / d:<סיר>
   portions?: Portion[];
+  unitG?: number; // משקל יחידה אחת: אם קיים, הכמות מוצגת ביחידות (×2)
 }
 
 export const macrosOf = partMacros;
@@ -50,11 +51,16 @@ export interface Cand {
 }
 
 const stepOf = (unit: 'g' | 'p') => (unit === 'g' ? 10 : 0.5);
-export const stepFor = (it: TItem) => (it.unit === 'g' ? (it.amount <= 40 ? 5 : it.amount >= 400 ? 25 : 10) : 0.5);
+export const stepFor = (it: TItem) => (it.unit === 'g' && it.unitG ? it.unitG : it.unit === 'g' ? (it.amount <= 40 ? 5 : it.amount >= 400 ? 25 : 10) : 0.5);
 
 const round1 = (n: number) => Math.round(n * 10) / 10;
 
+/** יחידה שלמה ספירה (ביצה, פיתה, פרוסה): לא כף, כוס, מנה וכדומה */
+const NOT_UNIT = /^(כף|כפית|כוס|מנה|חופן|קופסה|גביע|פלח|שורה|טבלה|סקופ|חצי|קערה|מיני|קטנה)/;
+export const unitOf = (portions?: Portion[]): number | undefined => portions?.find((p) => p.g > 0 && !NOT_UNIT.test(p.l))?.g;
+
 function pushItem(it: Omit<TItem, 'id' | 'step' | 'src'>) {
+  if (it.unitG === undefined && it.unit === 'g') it = { ...it, unitG: unitOf(it.portions) };
   tray.set((s) => {
     const hit = s.items.find((i) => i.src === 'm' && (it.foodId ? i.foodId === it.foodId : !i.foodId && i.name === it.name));
     if (hit) return { ...s, items: s.items.map((i) => (i === hit ? { ...i, amount: round1(i.amount + it.amount) } : i)) };
@@ -69,7 +75,7 @@ export function trayAdd(c: Cand) {
     for (const p of c.parts) {
       const d = p.foodId?.startsWith('d:') ? dishes.find((x) => x.id === p.foodId!.slice(2)) : undefined;
       const per = d ? dishPer100(d) : p.per;
-      pushItem({ name: p.name, unit: p.unit, amount: p.amount, base: p.base, per, est: p.est, foodId: p.foodId, portions: foodPortions(p.foodId) });
+      pushItem({ name: p.name, unit: p.unit, amount: p.amount, base: p.base, per, est: p.est, foodId: p.foodId, portions: foodPortions(p.foodId), unitG: p.unitG });
     }
     if (wasEmpty && c.parts.length > 1) tray.set((s) => ({ ...s, name: c.name }));
     return;
@@ -123,7 +129,7 @@ export const trayCount = (name: string) => tray.get().items.find((i) => i.src ==
 
 /** פריט מגש → רכיב שנשמר בארוחה (כולל פירוק המצרכים כשזה חלק מסיר) */
 export function toPart(it: TItem, s: State): Part {
-  const part: Part = { id: uid(), name: it.name, unit: it.unit, amount: round1(it.amount), base: it.base, per: it.per, est: it.est, foodId: it.foodId };
+  const part: Part = { id: uid(), name: it.name, unit: it.unit, amount: round1(it.amount), base: it.base, per: it.per, est: it.est, foodId: it.foodId, unitG: it.unitG };
   if (it.foodId?.startsWith('d:')) {
     const d = s.dishes.find((x) => x.id === it.foodId!.slice(2));
     if (d) part.sub = dishSub(d, it.amount);
@@ -138,7 +144,8 @@ export function makeEntries(items: TItem[], s: State, one: boolean, mealName: st
   const parts = items.map((i) => toPart(i, s));
   const single = (p: Part): EntryDraft => {
     const m = partMacros(p);
-    const nm = p.unit === 'g' ? `${p.name} · ${Math.round(p.amount)} ג׳` : p.amount !== 1 ? `${p.name} ×${p.amount}` : p.name;
+    const cnt = p.unit === 'g' && p.unitG ? Math.round((p.amount / p.unitG) * 10) / 10 : 0;
+    const nm = cnt > 0 ? `${p.name} ×${cnt}` : p.unit === 'g' ? `${p.name} · ${Math.round(p.amount)} ג׳` : p.amount !== 1 ? `${p.name} ×${p.amount}` : p.name;
     return { name: nm, ...m, est: p.est, parts: [p], dishId: p.foodId?.startsWith('d:') ? p.foodId.slice(2) : undefined };
   };
   if (parts.length === 1 || !one) return parts.map(single);

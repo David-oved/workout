@@ -7,7 +7,7 @@ import { chatTurn, type ChatTurn } from './gemini';
 import { buildAppData } from './context';
 import { macrosOf, tray } from '../ui/tray';
 import { enabledDocs } from './docs';
-import { extractReply, itemMacros, type AiItem, type AiProduct, type Source } from './pure';
+import { extractReply, isCombined, itemMacros, type AiItem, type AiProduct, type Source } from './pure';
 import { foodHints, nowBlock } from './hints';
 
 /**
@@ -174,18 +174,30 @@ async function runTurn() {
     if (lib.parts.length + lib.texts.length > 0) stage('קורא את המסמכים מהספרייה');
     const hints = lastUser?.text ? await foodHints(lastUser.text).catch(() => '') : '';
     const turns = buildTurns(chat.get().messages.filter((m) => m.id !== ph), lib, hints);
-    const res = await chatTurn(turns, {
+    const callOpts = {
       web,
       deep,
       docs: lib.parts.length + lib.texts.length > 0,
       onStage: stage,
-      onDelta: (acc) => {
+      onDelta: (acc: string) => {
         const r = extractReply(acc);
         const text = r || (acc.trimStart().startsWith('{') ? '' : acc);
         if (text) { once('כותב תשובה'); patchMsg(ph, (m) => (m.text === text ? m : { ...m, text })); }
         if (/"items"\s*:\s*\[\s*\{/.test(acc)) once('מחשב כמויות וערכים תזונתיים');
       },
-    });
+    };
+    let res = await chatTurn(turns, callOpts);
+    // פריט שמחבר כמה מזונות? מבקשים פעם אחת לפרק אותו לרכיבים נפרדים
+    const bad = res.items.filter((i) => isCombined(i.name)).map((i) => i.name);
+    if (bad.length) {
+      stage('מפרק פריט משולב לרכיבים');
+      const fixTurns: ChatTurn[] = [
+        ...turns,
+        { role: 'model', text: JSON.stringify({ reply: res.reply, items: res.items.map(stripId) }) },
+        { role: 'user', text: `[SYSTEM FIX] These items combine several foods or carry a quantity in the name: ${bad.map((x) => JSON.stringify(x)).join(', ')}. One item must be ONE single food in the singular. Return the full updated card again (same reply style) with every combined item split into separate single-food items, and with count and unitGrams for whole units.` },
+      ];
+      try { res = await chatTurn(fixTurns, callOpts); } catch { /* נשארים עם התשובה הראשונה */ }
+    }
     const remembered = saveMemory(res.memory);
     clearStages();
     setChat((s) => {

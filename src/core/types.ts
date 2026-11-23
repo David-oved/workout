@@ -14,6 +14,7 @@ export interface Part {
   per: Macros; // לפי base
   est?: boolean;
   foodId?: string;
+  unitG?: number; // משקל יחידה אחת (ביצה 50 ג׳), כדי להציג ×2 במקום 100 ג׳
   sub?: Part[]; // רכיבים גולמיים שנכנסו לחלק הזה (כשאוכלים מנה מסיר)
 }
 

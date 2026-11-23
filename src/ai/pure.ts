@@ -11,6 +11,8 @@ export interface AiItem {
   confidence: 'high' | 'medium' | 'low';
   source: 'label' | 'known' | 'estimate';
   note?: string;
+  count?: number; // כמה יחידות (2 ביצים)
+  unitGrams?: number; // משקל יחידה אחת
 }
 /** הצעה ליצירת מוצר חדש במאגר האישי: ערכים ל-100 גרם, ומשקל יחידה אם יש */
 export interface AiProduct {
@@ -44,7 +46,7 @@ SAFETY (he is a minor)
 - For teenagers keep the calorie surplus modest and food-first. Do not invent numbers or studies. Separate clearly: well established / likely / uncertain.
 
 REPLY FORMAT: return ONE JSON object only, no text around it, exactly this shape:
-{"reply":"Hebrew message","products":[{"name":"שם בעברית","brand":"optional","kcal100":number,"p100":number,"c100":number,"f100":number,"unitLabel":"יחידה","unitGrams":number,"source":"label"|"web"|"estimate","note":"optional very short Hebrew note","url":"optional page you used"}],"items":[{"name":"שם בעברית","grams":number,"kcal100":number,"p100":number,"c100":number,"f100":number,"confidence":"high"|"medium"|"low","source":"label"|"known"|"estimate","note":"optional very short Hebrew note"}],"memory":["optional short durable fact"],"suggestions":["optional short follow-up he may tap"]}
+{"reply":"Hebrew message","products":[{"name":"שם בעברית","brand":"optional","kcal100":number,"p100":number,"c100":number,"f100":number,"unitLabel":"יחידה","unitGrams":number,"source":"label"|"web"|"estimate","note":"optional very short Hebrew note","url":"optional page you used"}],"items":[{"name":"שם בעברית","count":number,"unitGrams":number,"grams":number,"kcal100":number,"p100":number,"c100":number,"f100":number,"confidence":"high"|"medium"|"low","source":"label"|"known"|"estimate","note":"optional very short Hebrew note"}],"memory":["optional short durable fact"],"suggestions":["optional short follow-up he may tap"]}
 
 Rules for "products" (proposals to create a NEW product in his personal food list; he must approve them, you never add anything by yourself):
 - Return [] unless one of these is true: (a) he describes or photographs a specific product that is NOT in [DATABASE MATCHES] (a packaged item, a restaurant dish he eats often, a homemade recipe); (b) he gives you totals for several units (for example "3 sausages, 5 of them have 60g protein") so you can work out one unit: compute per unit and then per 100g using the unit weight you know or ask for; (c) PRODUCT MODE is on.
@@ -62,6 +64,8 @@ Rules for "reply":
 
 Rules for "items" (the meal card):
 - "items" is the COMPLETE current list for the meal under discussion. If no meal is being discussed, return []. If a card already exists and you are only answering a question or chatting, return the unchanged current list.
+- ONE ITEM = ONE SINGLE FOOD. There is no such thing as an item made of two foods: never write "ביצים ולחם", "אורז ועוף", "חביתה עם גבינה" as one item; split into "ביצה", "לחם", "אורז", "עוף", "גבינה". Never put a plural or a quantity in the name. The NAME is always one food in the singular ("ביצה", "פיתה", "נקניקיה"). A packaged ready product (a protein bar, a yogurt cup, a frozen schnitzel) is one food and stays one item.
+- QUANTITY: when he eats whole countable units (eggs, slices, pitas, sausages, bananas) return ONE item with "count" and "unitGrams", and grams = count * unitGrams. "2 eggs" = {"name":"ביצה","count":2,"unitGrams":50,"grams":100}. Do not turn the count into a bigger single food, and do not return the same food twice. For things measured by weight or volume (rice, milk, oil) omit count and unitGrams.
 - The app shows the card as ONE meal made of separate ingredients that he can open and edit (for example "אורז ועוף וקטשופ" with rice, chicken and ketchup inside). So return one item per real ingredient, with a plain Hebrew ingredient name and its own grams: rice, chicken, ketchup, oil, tahini, bread, filling. Never merge a whole plate into one item unless it is a ready packaged product or a dish you truly cannot split. Use cooked weights for cooked foods. "grams" is the amount actually eaten. Typical weights: egg 50g, pita 70g, bun 60g, bread slice 30g, tablespoon 15g, teaspoon 5g, cup of cooked rice 160g, cup of milk 240g.
 - kcal100, p100, c100, f100 are per 100 g (kcal; grams of protein, carbohydrate, fat) from standard databases (USDA, Israeli Ministry of Health). Be realistic. Do not underestimate oil, tahini, schnitzel breading, restaurant and street food.
 - If a nutrition-label photo is provided, read the values exactly and use source "label". Convert per-serving values to per-100g using the printed serving size.
@@ -139,7 +143,9 @@ export function parseAiJson(raw: string, makeId: () => string): AiResult {
     items.push({
       id: makeId(),
       name,
-      grams: Math.round(num(x?.grams, 1, 3000, 100)),
+      grams: Math.round(num(x?.count, 0, 200, 0) > 0 && num(x?.unitGrams, 0, 3000, 0) > 0 ? num(x.count, 0, 200) * num(x.unitGrams, 0, 3000) : num(x?.grams, 1, 3000, 100)),
+      count: num(x?.count, 0, 200, 0) > 0 && num(x?.unitGrams, 0, 3000, 0) > 0 ? Math.round(num(x.count, 0, 200) * 100) / 100 : undefined,
+      unitGrams: num(x?.count, 0, 200, 0) > 0 && num(x?.unitGrams, 0, 3000, 0) > 0 ? Math.round(num(x.unitGrams, 0, 3000) * 10) / 10 : undefined,
       kcal100: num(x?.kcal100, 0, 950),
       p100: num(x?.p100, 0, 100),
       c100: num(x?.c100, 0, 100),
@@ -173,6 +179,13 @@ export function parseAiJson(raw: string, makeId: () => string): AiResult {
   if (!items.length && !products.length && !reply) throw new Error('לא התקבלה תשובה שימושית. נסה לנסח אחרת');
   return { reply, items, products, memory: strs(j.memory, 2, 140), suggestions: strs(j.suggestions, 3, 60) };
 }
+
+/** פריט שמחבר כמה מזונות ("ביצים ולחם", "אורז ועוף"): אסור, ואז מבקשים מה-AI לפרק */
+const OK_V = /^(וופל|וניל|ויטמין|ורד|ויליגר|ויסקי|וודקה|וגטריאן|ולנסיה)/;
+export const isCombined = (name: string): boolean => {
+  if (/[,+/]| עם | ו-/.test(name)) return true;
+  return name.split(/\s+/).slice(1).some((w) => /^ו[א-ת]{2,}/.test(w) && !OK_V.test(w));
+};
 
 export const itemMacros = (it: { grams: number; kcal100: number; p100: number; c100: number; f100: number }) => ({
   k: Math.round((it.grams / 100) * it.kcal100),

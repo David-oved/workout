@@ -80,6 +80,7 @@ export function AddScreen() {
   const aiItems: TItem[] = (draft?.items ?? []).map((it) => ({
     id: it.id, name: it.name, unit: 'g', amount: it.grams, step: 10, base: 100,
     per: { k: it.kcal100, p: it.p100, c: it.c100, f: it.f100 }, est: it.source === 'estimate', src: 'ai', msgId: draft!.id, conf: it.confidence,
+    unitG: it.unitGrams, portions: it.unitGrams ? [{ l: 'יחידה', g: it.unitGrams }] : undefined,
   }));
   const all = [...manual, ...aiItems];
   const tot = all.reduce((a, it) => { const m = macrosOf(it); return { k: a.k + m.k, p: a.p + m.p, c: a.c + m.c, f: a.f + m.f }; }, { k: 0, p: 0, c: 0, f: 0 });
@@ -544,10 +545,10 @@ export function AddScreen() {
                   return (
                     <div class="as-it" key={it.id}>
                       <div class="as-ih">
-                        <button class="nm" onClick={() => setOpenRow(openRow === it.id ? null : it.id)}>{it.name}{it.src === 'ai' && it.est ? <i class="etag" style={{ marginRight: 6 }}>הערכה</i> : null}</button>
+                        <button class="nm" onClick={() => setOpenRow(openRow === it.id ? null : it.id)}>{it.name}{it.unitG && isG ? <small class="ug num">{Math.round(it.amount)} ג׳</small> : null}{it.src === 'ai' && it.est ? <i class="etag" style={{ marginRight: 6 }}>הערכה</i> : null}</button>
                         <span class="as-st">
                           <button aria-label="הפחת" onClick={() => setAmt(it, it.amount - st)}><Minus /></button>
-                          <span class="num">{isG ? `${Math.round(it.amount)} ג׳` : `×${it.amount}`}</span>
+                          <span class="num">{isG && it.unitG ? `×${Math.round((it.amount / it.unitG) * 10) / 10}` : isG ? `${Math.round(it.amount)} ג׳` : `×${it.amount}`}</span>
                           <button aria-label="הוסף" onClick={() => setAmt(it, it.amount + st)}><Plus /></button>
                         </span>
                         <span class="as-ik num"><Kcal m={m} /></span>
