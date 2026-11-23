@@ -671,3 +671,21 @@ select.inp{background-image:none}
 .pc-acts .btn{height:42px;font-size:14px;gap:6px;display:inline-flex;align-items:center;justify-content:center;padding:0 14px}
 .pc-acts .btn.primary{flex:1}
 .pc-acts svg{width:15px;height:15px}
+
+/* ===== מצלמה מובנית ===== */
+.cam{position:absolute;inset:0;z-index:300;background:#000;opacity:0;visibility:hidden;transition:opacity .22s,visibility .22s;overflow:hidden}
+.cam.on{opacity:1;visibility:visible}
+.cam video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:0;transition:opacity .25s}
+.cam video.rd{opacity:1}
+.cam-fl{position:absolute;inset:0;background:#fff;opacity:0;pointer-events:none;transition:opacity .14s}
+.cam-fl.on{opacity:.7}
+.cam-x{position:absolute;top:calc(var(--st) + 10px);right:16px;width:44px;height:44px;border-radius:50%;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;color:#fff}
+.cam-x svg{width:22px;height:22px}
+.cam-bar{position:absolute;left:0;right:0;bottom:0;display:flex;align-items:center;justify-content:space-around;padding:22px 24px max(28px,env(safe-area-inset-bottom));background:linear-gradient(0deg,rgba(0,0,0,.6),rgba(0,0,0,0))}
+.cam-s{width:52px;height:52px;border-radius:50%;background:rgba(255,255,255,.16);display:flex;align-items:center;justify-content:center;color:#fff}
+.cam-s svg{width:24px;height:24px}
+.cam-shot{width:76px;height:76px;border-radius:50%;border:4px solid #fff;display:flex;align-items:center;justify-content:center;padding:0}
+.cam-shot span{width:58px;height:58px;border-radius:50%;background:#fff;transition:transform .12s}
+.cam-shot:active span{transform:scale(.88)}
+.cam-shot:disabled{opacity:.4}
+.cam-err{position:absolute;left:24px;right:24px;top:40%;text-align:center;color:#fff;line-height:1.6;font-size:15px}

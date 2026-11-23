@@ -16,6 +16,7 @@ import { buildCandidates, candMacros, defaultPortion, gapSuggestions, macrosOf, 
 import { dbState, getFood, loadDb, searchFoods, type FoodRec } from '../data/foodDb';
 import { AmtInput, FoodPicker, FoodRow } from './FoodPicker';
 import { PotSheet } from './Pot';
+import { openCamera } from '../ui/camera';
 import { ProductCard } from './ProductCard';
 import { parseMeal, parseNewProduct, type Parsed } from '../core/parse';
 
@@ -59,7 +60,6 @@ export function AddScreen() {
   const [altOpen, setAltOpen] = useState<Record<number, boolean>>({});
   const bodyRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
-  const prodRef = useRef<HTMLInputElement>(null);
   const [propMsg, setPropMsg] = useState<string | null>(null);
   const inRef = useRef<HTMLInputElement>(null);
 
@@ -132,31 +132,32 @@ export function AddScreen() {
     void sendMessage(t, fs);
     setTimeout(() => { const b = bodyRef.current; if (b) b.scrollTo({ top: b.scrollHeight, behavior: 'smooth' }); }, 80);
   };
-  const onProductFile = async (e: Event) => {
-    const input = e.target as HTMLInputElement;
-    const picked = [...(input.files ?? [])].slice(0, 2);
-    input.value = '';
+  const sendProduct = async (picked: File[]) => {
     if (!picked.length) return;
     setFileBusy(true);
     try {
-      const out = await Promise.all(picked.map((f) => fileToAttachment(f)));
+      const out = await Promise.all(picked.slice(0, 2).map((f) => fileToAttachment(f)));
       setView('chat');
       void sendMessage('', out, { product: true });
     } catch (er) { toast((er as Error).message); }
     setFileBusy(false);
   };
-  const onFiles = async (e: Event) => {
-    const input = e.target as HTMLInputElement;
-    const picked = [...(input.files ?? [])].slice(0, 3 - files.length);
-    input.value = '';
-    if (!picked.length) return;
+  const addChatFiles = async (picked: File[]) => {
+    const take = picked.slice(0, 3 - files.length);
+    if (!take.length) return;
     setFileBusy(true);
     try {
-      const out = await Promise.all(picked.map((f) => fileToAttachment(f)));
+      const out = await Promise.all(take.map((f) => fileToAttachment(f)));
       setFiles((p) => [...p, ...out].slice(0, 3));
       setView('chat');
     } catch (er) { toast((er as Error).message); }
     setFileBusy(false);
+  };
+  const onFiles = (e: Event) => {
+    const input = e.target as HTMLInputElement;
+    const picked = [...(input.files ?? [])];
+    input.value = '';
+    void addChatFiles(picked);
   };
 
   /** שיחה חדשה / מחיקת השיחה: מיידי, ואפשר לבטל */
@@ -328,7 +329,7 @@ export function AddScreen() {
         <input ref={inRef} value={q} placeholder={view === 'chat' ? (ch.messages.length ? 'תקן אותי או שאל משהו…' : 'ספר לי מה אכלת…') : 'ספר ל-AI מה אכלת, או חפש מזון…'} autocomplete="off" enterkeyhint="send"
           onInput={(e) => setQ((e.target as HTMLInputElement).value)}
           onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); submit(); } }} />
-        <button class="ic" aria-label="צרף תמונה או PDF" disabled={files.length >= 3} onClick={() => fileRef.current?.click()}>{view === 'chat' ? <Paperclip /> : <Camera />}</button>
+        <button class="ic" aria-label="צרף תמונה או PDF" disabled={files.length >= 3} onClick={() => (view === 'chat' ? fileRef.current?.click() : openCamera((f) => void addChatFiles(f)))}>{view === 'chat' ? <Paperclip /> : <Camera />}</button>
         {(q.trim() || files.length > 0) && <button class="ic go" aria-label="שלח ל-AI" onClick={() => submit()}><ArrowUp /></button>}
       </div>
       {(files.length > 0 || fileBusy) && (
@@ -342,7 +343,6 @@ export function AddScreen() {
           {fileBusy && <span class="thumb ld" />}
         </div>
       )}
-      <input ref={prodRef} type="file" accept="image/*" multiple style={{ display: 'none' }} onChange={onProductFile} />
       <input ref={fileRef} type="file" accept="image/*,application/pdf" multiple style={{ display: 'none' }} onChange={onFiles} />
 
       <div class="as-body" ref={bodyRef} style={{ paddingBottom: showTray ? (trayOpen ? 430 : 190) : 100 }}>
@@ -516,7 +516,7 @@ export function AddScreen() {
             <div class="as-more">
               <button disabled={!ydayEntries.length} onClick={copyYesterday}><History />כמו אתמול</button>
               <button onClick={() => setSheet('manual')}><PencilLine />הזנה ידנית</button>
-              <button onClick={() => prodRef.current?.click()}><ScanLine />צלם מוצר</button>
+              <button onClick={() => openCamera((f) => void sendProduct(f))}><ScanLine />צלם מוצר</button>
             </div>
           </>
         )}
