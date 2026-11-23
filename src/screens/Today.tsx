@@ -1,5 +1,9 @@
-import { useEffect, useState } from 'preact/hooks';
+import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { Sparkles, Bell, X, Droplets, ListChecks, Minus, Settings as Cog, ChevronLeft, ChevronRight, Plus, Dumbbell, Check, Copy, Download, Siren, RefreshCw, Utensils } from 'lucide-preact';
+import { CountNum } from '../ui/anim';
+import { burst, rain, confetti, floatText } from '../ui/fx';
+import { streakOf } from '../core/streak';
+import { buildCandidates, candMacros, gapSuggestions, makeEntries, tray, trayAdd, trayClear, type Cand } from '../ui/tray';
 import { EventList } from '../ui/EventList';
 import { bridge, refreshEvents, syncWorkouts } from '../core/bridge';
 import { conflictsFor, eventsOn, hhmm, suggestSlot } from '../core/conflicts';
@@ -84,8 +88,47 @@ function Nudges({ today }: { today: string }) {
   );
 }
 
+/** הצעה בלחיצה אחת לסגירת הפער בחלבון: מהדברים שאתה כבר אוכל */
+function Ideas({ date, today }: { date: string; today: string }) {
+  const s = store.use((x) => x);
+  const hour = new Date().getHours();
+  const slot = useMemo(() => {
+    const nowMin = hour * 60 + new Date().getMinutes();
+    const hm = (t: string) => { const [a, b] = t.split(':').map(Number); return a * 60 + (b || 0); };
+    return [...s.settings.slots].sort((a, b) => Math.abs(hm(a.time) - nowMin) - Math.abs(hm(b.time) - nowMin))[0];
+  }, [s.settings.slots, hour]);
+  const sig = s.entries.length + ':' + s.dishes.length + ':' + date;
+  const gap = useMemo(() => {
+    if (!slot) return null;
+    const g = gapSuggestions(buildCandidates(slot.id), date, { k: 0, p: 0, c: 0, f: 0 }, 3, true);
+    return g.list.length ? g : null;
+  }, [sig, slot?.id]);
+  if (!gap || !slot || hour < 11 || !s.settings.remind.nudges) return null;
+  const add = (c: Cand) => {
+    const keep = tray.get();
+    trayClear(); trayAdd(c);
+    const drafts = makeEntries(tray.get().items, store.get(), true, c.name);
+    tray.set(keep);
+    const ids = drafts.map((d) => actions.addEntry({ date, slot: slot.id, name: d.name, k: d.k, p: d.p, c: d.c, f: d.f, est: d.est, parts: d.parts, dishId: d.dishId }).id);
+    toast(`נוסף ל${slot.name}`, () => actions.removeEntries(ids));
+  };
+  return (
+    <div class="g gapc">
+      <div class="gh"><Sparkles /><span>חסרים עוד <b class="num">{Math.round(gap.remP)}</b> ג׳ חלבון. הצעה בלחיצה:</span></div>
+      <div class="gl">
+        {gap.list.map((c) => {
+          const m = candMacros(c);
+          return <button key={c.key} onClick={() => add(c)}><b>{c.name}</b><small class="num">{m.p} ח׳ · {m.k} קל׳</small></button>;
+        })}
+      </div>
+    </div>
+  );
+}
+
 export function TodayScreen() {
   const s = store.use((x) => x);
+  const taps = useRef({ t: 0, n: 0, r: 0 });
+  const ringRef = useRef<HTMLDivElement>(null);
   const date = ui.use((u) => u.date);
   const tab = ui.use((u) => u.tab);
   const today = todayKey(s.settings.resetHour);
@@ -113,8 +156,23 @@ export function TodayScreen() {
   const canCopy = info.entries.length === 0 && s.entries.some((e) => e.date === yesterday);
   const weekAgo = Date.now() - 7 * 86400_000;
   const needBackup = s.entries.length > 6 && (s.meta.lastBackup ?? 0) < weekAgo;
+  const streak = streakOf(s, today);
 
   const go = (n: number) => setUi({ date: addDays(date, n) });
+  // הפתעות: 7 לחיצות על הכותרת = גשם אימוג'ים, 5 לחיצות על הטבעת = קונפטי
+  const tapTitle = () => {
+    setUi({ date: today });
+    const t = taps.current, now = Date.now();
+    t.n = now - t.t < 900 ? t.n + 1 : 1; t.t = now;
+    if (t.n >= 7) { t.n = 0; rain(['🏋️', '💪', '🍗', '🥚', '🔥', '🦍', '🥩']); }
+  };
+  const tapRing = () => {
+    const el = ringRef.current;
+    if (el) { el.classList.remove('boing'); void el.offsetWidth; el.classList.add('boing'); }
+    const t = taps.current, now = Date.now();
+    t.r = now - t.t < 900 ? t.r + 1 : 1; t.t = now;
+    if (t.r >= 5) { t.r = 0; confetti(70); burst(['🔥', '💪', '⭐'], undefined, undefined, 10); floatText('אתה מטורף 😎'); }
+  };
   const sub = `${DAY_NAMES[dow(date)]} ${dayMonth(date)} · ${info.place === 'dorm' ? 'מעונות' : 'בית'}`;
 
   const group = (id: string, name: string, time?: string) => {
@@ -152,8 +210,9 @@ export function TodayScreen() {
     <section class={'screen' + (tab === 'today' ? ' on' : '')} aria-label="היום">
       <div class="hd">
         <div>
-          <button class="t" style={{ display: 'block', textAlign: 'right' }} onClick={() => setUi({ date: today })}>{dayLabel(date, today)}</button>
+          <button class="t" style={{ display: 'block', textAlign: 'right' }} onClick={tapTitle}>{dayLabel(date, today)}</button>
           <div class="s">{sub}</div>
+          {streak >= 2 && <button class="streak" onClick={() => toast(`${streak} ימים ברצף שאתה מתעד. אל תשבור!`)}><span class="fl">🔥</span><b class="num">{streak}</b> ימים ברצף</button>}
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
           <button class="g ib" aria-label="היום הקודם" onClick={() => go(-1)}><ChevronRight /></button>
@@ -162,15 +221,17 @@ export function TodayScreen() {
         </div>
       </div>
 
-      <div class="g hero">
-        <Ring size={150} stroke={12} pct={eaten.k / target.k} color={left < 0 ? 'var(--warn)' : 'var(--accent)'}>
-          <div class="rc">
-            <div class="big num">{fmt(Math.abs(left))}</div>
-            <div class="mu">{left < 0 ? 'קלוריות מעל היעד' : 'קלוריות נשארו'}</div>
-          </div>
-        </Ring>
+      <div class={'g hero' + (left < 0 ? ' over' : '')}>
+        <div class="hrw" ref={ringRef} onClick={tapRing}>
+          <Ring size={150} stroke={12} pct={eaten.k / target.k} color={left < 0 ? 'var(--warn)' : 'var(--accent)'}>
+            <div class="rc">
+              <div class="big num"><CountNum v={Math.abs(left)} /></div>
+              <div class="mu">{left < 0 ? 'קלוריות מעל היעד' : 'קלוריות נשארו'}</div>
+            </div>
+          </Ring>
+        </div>
         <div class="st">
-          <div><span class="mu">אכלתי</span><b class="num">{fmt(eaten.k)}</b></div>
+          <div><span class="mu">אכלתי</span><b class="num"><CountNum v={eaten.k} /></b></div>
           <div><span class="mu">יעד {info.training ? '· יום אימון' : '· יום מנוחה'}</span><b class="num">{fmt(target.k)}</b></div>
         </div>
       </div>
@@ -181,10 +242,10 @@ export function TodayScreen() {
           return (
             <div class="g mc" key={m.k}>
               <Ring size={70} stroke={6.5} pct={eaten[m.k] / target[m.k]} color={m.color} cls="mr">
-                <span class="num">{Math.abs(rem)}</span>
+                <span class="num"><CountNum v={Math.abs(rem)} raw /></span>
               </Ring>
               <div style={{ fontSize: 14 }}>{m.name}</div>
-              <div class="ate num"><b style={{ color: m.color }}>{eaten[m.k]}</b> ג׳ אכלתי</div>
+              <div class="ate num"><b style={{ color: m.color }}><CountNum v={eaten[m.k]} raw /></b> ג׳ אכלתי</div>
               <div class="mu">{rem < 0 ? `מעל היעד (${target[m.k]})` : `מתוך ${target[m.k]} ג׳`}</div>
             </div>
           );
@@ -192,17 +253,20 @@ export function TodayScreen() {
       </div>
 
       {date === today && <Nudges today={today} />}
+      {date === today && <Ideas date={date} today={today} />}
 
-      <div class="g wtr">
-        <Droplets />
-        <div class="tx">
-          <b>מים</b>
-          <span class="mu num">{((s.water[date] ?? 0) / 1000).toFixed(2)} מתוך {(waterGoal / 1000).toFixed(1)} ליטר</span>
-          <div class="wbar"><i style={{ width: Math.min(100, ((s.water[date] ?? 0) / waterGoal) * 100) + '%' }} /></div>
+      {s.settings.show.water && (
+        <div class="g wtr">
+          <Droplets />
+          <div class="tx">
+            <b>מים</b>
+            <span class="mu num">{((s.water[date] ?? 0) / 1000).toFixed(2)} מתוך {(waterGoal / 1000).toFixed(1)} ליטר</span>
+            <div class="wbar"><i style={{ width: Math.min(100, ((s.water[date] ?? 0) / waterGoal) * 100) + '%' }} /></div>
+          </div>
+          <button class="wb" aria-label="הפחת כוס" onClick={() => actions.addWater(date, -250)}><Minus /></button>
+          <button class="wb pl" aria-label="הוסף כוס" onClick={() => actions.addWater(date, 250)}><Plus /><small>250</small></button>
         </div>
-        <button class="wb" aria-label="הפחת כוס" onClick={() => actions.addWater(date, -250)}><Minus /></button>
-        <button class="wb pl" aria-label="הוסף כוס" onClick={() => actions.addWater(date, 250)}><Plus /><small>250</small></button>
-      </div>
+      )}
 
       {info.workouts.map((w) => <WorkoutCard w={w} key={w.id} />)}
 

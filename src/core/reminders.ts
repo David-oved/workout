@@ -128,6 +128,6 @@ export function nudgesFor(s: State, now = new Date()): Nudge[] {
 
   const goal = Math.round((s.settings.profile.weightKg * 35) / 250) * 250 + (info.training ? 500 : 0);
   const ml = s.water[today] ?? 0;
-  if (nowMin >= 14 * 60 && ml < goal * 0.4) out.push({ id: 'water', text: `שתית ${(ml / 1000).toFixed(1)} ליטר מתוך ${(goal / 1000).toFixed(1)}`, cta: { label: '+ כוס', kind: 'water' } });
+  if (s.settings.show.water && nowMin >= 14 * 60 && ml < goal * 0.4) out.push({ id: 'water', text: `שתית ${(ml / 1000).toFixed(1)} ליטר מתוך ${(goal / 1000).toFixed(1)}`, cta: { label: '+ כוס', kind: 'water' } });
   return out.slice(0, 3);
 }

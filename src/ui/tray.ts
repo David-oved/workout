@@ -243,16 +243,16 @@ export const topTiles = (cands: Cand[], n: number) => [...cands].sort((a, b) => 
 export const candMacros = (c: Cand) => (c.parts ? { k: Math.round(c.per.k), p: Math.round(c.per.p), c: Math.round(c.per.c), f: Math.round(c.per.f) } : macrosOf({ amount: c.amount, base: c.base, per: c.per }));
 
 /** "חסר לך היום": מנות עם הרבה חלבון שנכנסות בקלוריות שנשארו */
-export function gapSuggestions(cands: Cand[], date: string, extra: Macros) {
+export function gapSuggestions(cands: Cand[], date: string, extra: Macros, limit = 2, noPots = false) {
   const s = store.get();
   const info = dayInfo(s, date);
   const remK = info.target.k - info.eaten.k - extra.k;
   const remP = info.target.p - info.eaten.p - extra.p;
   if (remP < 12) return { remP, remK, list: [] as Cand[] };
   const list = cands
-    .filter((c) => { const m = candMacros(c); return m.p >= 12 && m.k <= remK + 80 && m.p / Math.max(1, m.k) > 0.05; })
+    .filter((c) => { if (noPots && c.kind === 'pot') return false; const m = candMacros(c); return m.p >= 12 && m.k <= remK + 80 && m.p / Math.max(1, m.k) > 0.05; })
     .sort((a, b) => candMacros(b).p - candMacros(a).p || b.w - a.w)
-    .slice(0, 2);
+    .slice(0, limit);
   return { remP, remK, list };
 }
 

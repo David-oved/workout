@@ -23,8 +23,7 @@ export function dayFacts(s: State, date: string): DayFacts {
   lines.push(`eaten: ${e.k} kcal (${Math.round((e.k / t.k) * 100)}% of ${t.k}), protein ${e.p}g of ${t.p}, carbs ${e.c}g of ${t.c}, fat ${e.f}g of ${t.f}.`);
   const meals = info.entries.map((x) => `${slotName(s, x.slot)}: ${x.name} (${x.k} kcal, ${x.p}g protein)`);
   lines.push(meals.length ? `meals logged:\n- ${meals.join('\n- ')}` : 'no meals logged.');
-  const ml = s.water[date] ?? 0;
-  lines.push(`water: ${(ml / 1000).toFixed(2)} L.`);
+  if (s.settings.show.water) lines.push(`water: ${((s.water[date] ?? 0) / 1000).toFixed(2)} L.`);
 
   const planned = info.workouts.filter((w) => w.status !== 'skipped');
   const sess = s.sessions.filter((x) => x.date === date);

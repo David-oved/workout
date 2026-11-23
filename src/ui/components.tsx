@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'preact/hooks';
 import { ChartColumn, CalendarDays, House, Plus, Sparkles, RefreshCw } from 'lucide-preact';
 import { ui, setUi, type Tab } from './ui';
 import { updater, applyUpdate, dismissUpdate, APP_VERSION } from '../update/updater';
+import { fxOn } from './fx';
 
 /** משאיר תוכן מוצג עוד רגע אחרי סגירה, כדי שהאנימציה תסתיים בלי "קפיצה" */
 export function useLinger(open: boolean, ms = 600) {
@@ -20,7 +21,10 @@ export function Ring({ size, stroke, pct, color, track = 'rgba(255,255,255,.08)'
 }) {
   const r = (size - stroke) / 2;
   const c = 2 * Math.PI * r;
-  const p = Math.max(0, Math.min(1, pct));
+  const target = Math.max(0, Math.min(1, pct));
+  // הטבעת "נמשכת" לערך בטעינה ובכל שינוי, במקום להופיע מלאה
+  const [p, setP] = useState(fxOn() ? 0 : target);
+  useEffect(() => { const id = requestAnimationFrame(() => setP(target)); return () => cancelAnimationFrame(id); }, [target]);
   const mid = size / 2;
   return (
     <div class={cls} style={{ position: 'relative', width: size, height: size, flex: 'none' }}>

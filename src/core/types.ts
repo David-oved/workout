@@ -102,6 +102,8 @@ export interface Settings {
   resetHour: number;
   cal: { enabled: boolean; feedId: string; alertMin: number };
   remind: Remind;
+  /** מה מוצג ואיך: מים (כבוי כברירת מחדל), אנימציות והפתעות, ומנוחה בין סטים (0 = בלי טיימר) */
+  show: { water: boolean; fx: boolean; restSec: number };
   ai: {
     provider: 'none' | 'gemini' | 'groq' | 'claude';
     apiKey: string;

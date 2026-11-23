@@ -7,11 +7,13 @@ import { initUpdater } from './update/updater';
 import { startFeedSync } from './core/calfeed';
 import { startBridge } from './core/bridge';
 import { startPush } from './push/push';
+import { initFx } from './ui/fx';
 
 const started = performance.now();
 
 async function boot() {
   await loadState();
+  initFx();
   // ה-import הדינמי מבטיח שהסטייט נטען לפני שה-UI נבנה
   const { App } = await import('./app');
   render(<App />, document.getElementById('app')!);

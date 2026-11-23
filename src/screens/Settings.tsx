@@ -19,8 +19,9 @@ import { exportBackup, importBackup } from '../core/backup';
 import { APP_VERSION, BUILD_ID, updater, checkForUpdate, applyUpdate } from '../update/updater';
 import type { Macros, Profile, TargetKey } from '../core/types';
 
-type Page = 'home' | 'profile' | 'targets' | 'week' | 'meals' | 'start' | 'backup' | 'updates' | 'calendar' | 'gcal' | 'ai' | 'aimodels' | 'aiknow' | 'remind';
+type Page = 'home' | 'profile' | 'targets' | 'week' | 'meals' | 'start' | 'backup' | 'updates' | 'calendar' | 'gcal' | 'ai' | 'aimodels' | 'aiknow' | 'remind' | 'look';
 const TITLES: Record<Page, string> = {
+  look: 'מראה והתנהגות',
   home: 'הגדרות', profile: 'פרופיל', targets: 'יעדי תזונה', week: 'שבוע ואימונים', meals: 'ארוחות', start: 'תחילת יום', backup: 'גיבוי', updates: 'עדכונים', calendar: 'פיד לקריאה בלבד', gcal: 'Google Calendar', ai: 'AI תזונה', aimodels: 'מודלים וחשיבה', aiknow: 'ידע וזיכרון', remind: 'תזכורות והתראות',
 };
 const TARGETS: [TargetKey, string][] = [
@@ -144,6 +145,7 @@ function SettingsBody() {
               <Row icon={<Sunrise />} title="תחילת יום" value={set.resetHour === 0 ? 'חצות' : `0${set.resetHour}:00 לפנות בוקר`} onClick={() => setPage('start')} />
             </div>
             <div class="g rows" style={{ marginTop: 14 }}>
+              <Row icon={<Sparkles />} title="מראה והתנהגות" value={`אנימציות ${set.show.fx ? 'פעילות' : 'כבויות'} · מים ${set.show.water ? 'מוצגים' : 'מוסתרים'} · מנוחה ${set.show.restSec ? set.show.restSec + ' שנ׳' : 'בלי טיימר'}`} onClick={() => setPage('look')} />
               <Row icon={<Bell />} title="תזכורות והתראות" value={`${Object.values(set.remind.meals).filter(Boolean).length} ארוחות${set.remind.weigh.on ? ' · שקילה' : ''}${set.remind.close.on ? ' · סגירת יום' : ''}${br.connected ? '' : ' · דורש Google Calendar'}`} badge={!br.connected} onClick={() => setPage('remind')} />
               <Row icon={<Sparkles />} title="AI תזונה (Gemini)" value={aiS.configured ? 'מחובר' : 'הערכת קלוריות מטקסט ותמונה'} badge={!aiS.configured} onClick={() => setPage('ai')} />
               <Row icon={<CalendarDays />} title="Google Calendar" value={br.connected ? `מחובר · ${br.events.length} אירועים` : 'קריאת אירועים וכתיבת אימונים'} badge={!br.connected} onClick={() => setPage('gcal')} />
@@ -158,6 +160,28 @@ function SettingsBody() {
                 setUi({ settingsOpen: false });
                 toast('הכל נמחק');
               }} />
+            </div>
+          </>
+        )}
+
+        {page === 'look' && (
+          <>
+            <div class="g rows">
+              <button class="row2" onClick={() => actions.saveSettings({ show: { ...set.show, fx: !set.show.fx } })}>
+                <span>אנימציות והפתעות<small>מספרים שסופרים, קונפטי אחרי אימון, אימוג׳ים כשאוכלים ועוד. מכבדות את ״הפחתת תנועה״ של המכשיר.</small></span>
+                <span class={'tgl' + (set.show.fx ? ' on' : '')} />
+              </button>
+              <button class="row2" onClick={() => actions.saveSettings({ show: { ...set.show, water: !set.show.water } })}>
+                <span>מעקב מים<small>כרטיס מים במסך היום, תזכורת ושורה בסיכום היומי.</small></span>
+                <span class={'tgl' + (set.show.water ? ' on' : '')} />
+              </button>
+            </div>
+            <div class="sec"><span>טיימר מנוחה בין סטים</span></div>
+            <div class="g card">
+              <div class="chips" style={{ margin: 0, flexWrap: 'wrap', overflow: 'visible' }}>
+                {[0, 45, 60, 90, 120, 180].map((n) => <button key={n} class={'chip' + (set.show.restSec === n ? ' on' : '')} onClick={() => actions.saveSettings({ show: { ...set.show, restSec: n } })}>{n === 0 ? 'כבוי' : n >= 60 ? `${n / 60 === Math.floor(n / 60) ? n / 60 : (n / 60).toFixed(1)} דק׳` : `${n} שנ׳`}</button>)}
+              </div>
+              <div class="note" style={{ marginTop: 10 }}>ביומן האימון מסמנים סט כבוצע והטיימר מתחיל לבד, עם צליל ורטט בסיום.</div>
             </div>
           </>
         )}

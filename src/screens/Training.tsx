@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
-import { X, Plus, Trash, Trophy, Copy } from 'lucide-preact';
+import { X, Plus, Trash, Trophy, Copy, Check } from 'lucide-preact';
+import { beep, celebrate, unlockAudio } from '../ui/fx';
 import { store } from '../core/state';
 import { actions } from '../core/actions';
 import { uid, dayLabel, todayKey } from '../core/dates';
@@ -13,6 +14,7 @@ import type { ExLog, Session, SetLog } from '../core/types';
 const blank = (): SetLog => ({ kg: 0, reps: 0 });
 const fmtSet = (x: SetLog) => (x.kg ? `${x.kg}×${x.reps}` : `${x.reps}`);
 void exLabel;
+const REST_TIPS = ['נושמים. שותים. סבלנות 💧', 'השרירים בונים את עצמם עכשיו', 'תפסיק לגלול, תנוח 😅', 'הסט הבא כבר מפחד ממך', 'נשימה עמוקה 😮‍💨', 'אל תחשוב. פשוט תנוח'];
 
 /** יומן אימון: תרגילים וסטים. הערכים מהאימון הקודם מוצעים מראש, כדי שרק תתקן מה שהשתנה */
 export function TrainingSheet() {
@@ -25,13 +27,36 @@ export function TrainingSheet() {
   const [q, setQ] = useState('');
   const [sid, setSid] = useState<string | null>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
+  // טיימר מנוחה: מסמנים סט כבוצע והטיימר מתחיל
+  const [doneKeys, setDoneKeys] = useState<string[]>([]);
+  const [rest, setRest] = useState<{ end: number; total: number; tip: string } | null>(null);
+  const [now, setNow] = useState(Date.now());
+  const restSec = s.settings.show.restSec;
+  useEffect(() => { if (!rest) return; const id = setInterval(() => setNow(Date.now()), 250); return () => clearInterval(id); }, [!!rest]);
+  const left = rest ? Math.max(0, Math.ceil((rest.end - now) / 1000)) : 0;
+  const fin = !!rest && left === 0;
+  useEffect(() => {
+    if (!fin) return;
+    beep();
+    const tm = setTimeout(() => setRest(null), 3200);
+    return () => clearTimeout(tm);
+  }, [fin]);
+  const tick = (i: number, j: number) => {
+    unlockAudio();
+    const k = i + '-' + j;
+    const on = !doneKeys.includes(k);
+    setDoneKeys((l) => (on ? [...l, k] : l.filter((x) => x !== k)));
+    if (on && restSec > 0) { setNow(Date.now()); setRest({ end: Date.now() + restSec * 1000, total: restSec, tip: REST_TIPS[Math.floor(Math.random() * REST_TIPS.length)] }); }
+  };
 
   const history = useMemo(() => [...s.sessions].sort((a, b) => b.date.localeCompare(a.date) || b.ts - a.ts), [s.sessions]);
   const prevOf = (name: string, exclude?: string | null) => history.find((x) => x.id !== exclude && x.exercises.some((e) => e.name === name))?.exercises.find((e) => e.name === name);
 
   useEffect(() => {
-    if (!t) return;
+    if (!t) { setRest(null); return; }
     setQ('');
+    setDoneKeys([]);
+    setRest(null);
     const mine = t.workoutId ? s.sessions.find((x) => x.workoutId === t.workoutId) : undefined;
     if (mine) { setSid(mine.id); setEx(JSON.parse(JSON.stringify(mine.exercises))); return; }
     setSid(null);
@@ -86,6 +111,7 @@ export function TrainingSheet() {
     actions.saveSession(x);
     if (cur.workoutId) actions.updateWorkout(cur.workoutId, { status: 'done' });
     toast(`האימון נשמר · נפח ${Math.round(vol).toLocaleString('en-US')} ק״ג${prs ? ` · ${prs} שיאים חדשים` : ''}`);
+    if (prs) setTimeout(() => celebrate('pr'), 350);
     close();
   };
   const del = () => {
@@ -131,7 +157,8 @@ export function TrainingSheet() {
               )}
               {prev && <div class="tr-prev num">בפעם הקודמת: {prev.sets.map(fmtSet).join(' · ')}</div>}
               {e.sets.map((y, j) => (
-                <div class="tr-set" key={j}>
+                <div class={'tr-set' + (doneKeys.includes(i + '-' + j) ? ' done' : '')} key={j}>
+                  <button class="tr-ck" aria-label="סט בוצע" aria-pressed={doneKeys.includes(i + '-' + j)} onClick={() => tick(i, j)}><Check /></button>
                   <span class="n num">{j + 1}</span>
                   <AmtInput value={y.kg} onChange={(n) => setSet(i, j, { kg: n })} suffix="ק״ג" />
                   <AmtInput value={y.reps} onChange={(n) => setSet(i, j, { reps: Math.round(n) })} suffix={e.unit === 'sec' ? 'שניות' : 'חזרות'} />
@@ -150,6 +177,18 @@ export function TrainingSheet() {
         </div>
         {sid && <button class="btn danger block" style={{ marginTop: 12 }} onClick={del}><Trash />מחק מהיומן</button>}
       </div>
+
+      {rest && (
+        <div class={'g tr-rest' + (fin ? ' fin' : '')} role="timer">
+          <div class="rt">
+            <b class="num">{fin ? 'קדימה! 💥' : `${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}`}</b>
+            <small>{fin ? 'הסט הבא מחכה' : rest.tip}</small>
+            <div class="rbar"><i style={{ width: (fin ? 100 : (left / rest.total) * 100) + '%' }} /></div>
+          </div>
+          {!fin && <button class="rb" onClick={() => setRest({ ...rest, end: rest.end + 15000, total: rest.total + 15 })}>+15</button>}
+          <button class="rb sk" onClick={() => setRest(null)}>{fin ? 'סגור' : 'דלג'}</button>
+        </div>
+      )}
 
       <div class="tr-foot">
         <button class="as-cta" onClick={save}>{cur?.workoutId ? 'שמור וסמן כבוצע' : 'שמור אימון'}</button>

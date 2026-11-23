@@ -838,3 +838,84 @@ select.inp{background-image:none}
 .pc-log{display:flex;flex-direction:column;gap:3px;margin:6px 6px 0;font-size:12px;color:var(--accent)}
 .pc-log span::before{content:"✓ "}
 .wkc-t{color:var(--accent);font-size:10.5px}
+
+/* ---------- v0.19: תנועה, אפקטים והצעות ---------- */
+.fxl{position:absolute;inset:0;pointer-events:none;overflow:hidden;z-index:300}
+.fxp{position:absolute;left:0;top:0;font-size:24px;line-height:1;will-change:transform,opacity}
+.fxp.big{font-size:30px}
+.fxc{position:absolute;left:0;top:0;will-change:transform,opacity}
+.fxt{position:absolute;left:0;top:0;white-space:nowrap;font-size:17px;font-weight:700;color:#fff;padding:7px 16px;border-radius:20px;background:rgba(14,16,20,.82);border:.5px solid rgba(92,225,168,.55);box-shadow:0 8px 24px rgba(0,0,0,.4)}
+
+@keyframes rise{from{opacity:0;transform:translateY(18px) scale(.975)}to{opacity:1;transform:none}}
+@keyframes entIn{from{opacity:0;transform:translateX(20px) scale(.93)}to{opacity:1;transform:none}}
+@keyframes popIn{0%{transform:scale(.3);opacity:0}60%{transform:scale(1.2);opacity:1}100%{transform:scale(1)}}
+@keyframes drawck{from{stroke-dashoffset:26}to{stroke-dashoffset:0}}
+@keyframes lift{0%,66%,100%{transform:translateY(0) rotate(0)}74%{transform:translateY(-5px) rotate(-16deg)}84%{transform:translateY(0) rotate(12deg)}92%{transform:rotate(-5deg)}}
+@keyframes bellring{0%,84%,100%{transform:rotate(0)}87%{transform:rotate(17deg)}90%{transform:rotate(-15deg)}93%{transform:rotate(10deg)}96%{transform:rotate(-5deg)}}
+@keyframes twinkle{0%,100%{transform:scale(1) rotate(0)}50%{transform:scale(1.25) rotate(20deg)}}
+@keyframes flame{0%,100%{transform:scale(1) rotate(-4deg)}50%{transform:scale(1.15,1.25) rotate(5deg)}}
+@keyframes shake{0%,100%{transform:translateX(0)}18%{transform:translateX(-7px) rotate(-2deg)}36%{transform:translateX(6px) rotate(2deg)}54%{transform:translateX(-4px)}72%{transform:translateX(3px)}}
+@keyframes boing{0%{transform:scale(1)}28%{transform:scale(.88)}58%{transform:scale(1.09)}80%{transform:scale(.98)}100%{transform:scale(1)}}
+@keyframes glowp{0%{box-shadow:0 0 0 0 rgba(92,225,168,.55)}100%{box-shadow:0 0 0 20px rgba(92,225,168,0)}}
+@keyframes tabpop{0%{transform:scale(.7) translateY(4px)}55%{transform:scale(1.22) translateY(-2px)}100%{transform:scale(1)}}
+@keyframes slideUp{from{opacity:0;transform:translateY(24px) scale(.96)}to{opacity:1;transform:none}}
+
+/* כניסה מדורגת של כרטיסי המסך בכל מעבר בין לשוניות (backwards: אחרי הסיום אין transform שחוסם לחיצות) */
+body.fx .screen.on>*{animation:rise .55s var(--ease) backwards}
+body.fx .screen.on>*:nth-child(2){animation-delay:.04s}
+body.fx .screen.on>*:nth-child(3){animation-delay:.08s}
+body.fx .screen.on>*:nth-child(4){animation-delay:.12s}
+body.fx .screen.on>*:nth-child(5){animation-delay:.16s}
+body.fx .screen.on>*:nth-child(6){animation-delay:.2s}
+body.fx .screen.on>*:nth-child(7){animation-delay:.24s}
+body.fx .screen.on>*:nth-child(8){animation-delay:.28s}
+body.fx .screen.on>*:nth-child(n+9){animation-delay:.32s}
+body.fx .ent2{animation:entIn .5s var(--spring) backwards}
+body.fx .nudge{animation:entIn .55s var(--spring) backwards}
+body.fx .gapc{animation:slideUp .55s var(--spring) backwards}
+body.fx .nudge>svg{animation:bellring 5s ease-in-out infinite;transform-origin:50% 10%}
+body.fx .sumrow>svg:first-child{animation:twinkle 3.2s ease-in-out infinite}
+body.fx .wcard .ic:not(.done) svg{animation:lift 5s ease-in-out infinite;transform-origin:50% 100%}
+body.fx .wcard .ic.done{animation:popIn .55s var(--spring) backwards}
+body.fx .wcard .ic.done svg path{stroke-dasharray:26;animation:drawck .5s .2s ease-out backwards}
+body.fx .hero.over .hrw{animation:shake .6s .5s}
+body.fx .hrw.boing{animation:boing .55s var(--spring)}
+body.fx .toast{transform:translateY(18px) scale(.9);transition:transform .55s var(--spring),opacity .3s,visibility .3s}
+body.fx .toast.on{transform:none}
+body.fx .addb svg{transition:transform .45s var(--spring)}
+body.fx .addb:active svg{transform:rotate(90deg) scale(1.15)}
+body.fx .lt.on svg{animation:tabpop .55s var(--spring)}
+body.fx .chip,body.fx .ib,body.fx .nudge .go,body.fx .addmini,body.fx .wb,body.fx .tr-add,body.fx .gapc button,body.fx .streak,body.fx .rb{transition:transform .32s var(--spring),background .2s,color .2s}
+body.fx .chip:active,body.fx .ib:active,body.fx .nudge .go:active,body.fx .addmini:active,body.fx .wb:active,body.fx .tr-add:active,body.fx .gapc button:active,body.fx .streak:active,body.fx .rb:active,body.fx .sumrow:active,body.fx .wcard:active,body.fx .mc:active{transform:scale(.94)}
+body.fx .tr-set.done .tr-ck{animation:popIn .45s var(--spring)}
+body.fx .tr-rest{animation:slideUp .5s var(--spring) backwards}
+body.fx .tr-rest.fin{animation:glowp 1s ease-out 3}
+
+.hrw{flex:none;display:block}
+.streak{display:inline-flex;align-items:center;gap:5px;height:28px;padding:0 11px;border-radius:14px;margin-top:8px;background:rgba(255,160,70,.15);border:.5px solid rgba(255,160,70,.4);color:#FFB36B;font-size:13px}
+.streak b{font-weight:700}
+.streak .fl{display:inline-block;font-size:15px;transform-origin:50% 90%}
+body.fx .streak .fl{animation:flame 1.4s ease-in-out infinite}
+
+.gapc{margin-top:12px;border-radius:22px;padding:12px 12px 12px;border:.5px solid rgba(92,225,168,.28)}
+.gapc .gh{display:flex;align-items:center;gap:8px;font-size:13.5px;color:var(--mu);margin-bottom:10px}
+.gapc .gh svg{width:16px;height:16px;color:var(--accent);flex:none}
+.gapc .gh b{color:var(--accent);font-weight:700}
+.gapc .gl{display:flex;gap:8px;overflow-x:auto;scrollbar-width:none;margin:0 -2px;padding:0 2px}
+.gapc .gl::-webkit-scrollbar{display:none}
+.gapc button{flex:none;display:flex;flex-direction:column;align-items:flex-start;gap:2px;padding:9px 14px;border-radius:16px;background:rgba(92,225,168,.13);border:.5px solid rgba(92,225,168,.38);text-align:right;max-width:210px}
+.gapc button b{font-size:14.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:180px}
+.gapc button small{font-size:12px;color:var(--accent)}
+
+.tr-set .tr-ck{width:30px;height:30px;border-radius:50%;flex:none;display:flex;align-items:center;justify-content:center;border:1.5px solid rgba(255,255,255,.22);color:transparent;background:transparent;transition:background .2s,border-color .2s,color .2s}
+.tr-set .tr-ck svg{width:16px;height:16px}
+.tr-set.done .tr-ck{background:var(--accent);border-color:var(--accent);color:var(--accent-d)}
+.tr-set.done .n{color:var(--accent)}
+.tr-rest{position:absolute;left:18px;right:18px;bottom:calc(max(18px,env(safe-area-inset-bottom)) + 70px);z-index:6;border-radius:24px;padding:12px 12px 12px 16px;display:flex;align-items:center;gap:10px;background:rgba(24,26,32,.92)!important;border-color:rgba(92,225,168,.45)}
+.tr-rest .rt{flex:1;min-width:0}
+.tr-rest .rt b{display:block;font-size:26px;font-weight:700;line-height:1.1;color:var(--accent)}
+.tr-rest .rt small{display:block;font-size:12.5px;color:var(--mu);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tr-rest .rbar{height:4px;border-radius:2px;background:rgba(255,255,255,.1);margin-top:8px;overflow:hidden}
+.tr-rest .rbar i{display:block;height:100%;background:var(--accent);border-radius:2px;transition:width .3s linear}
+.tr-rest .rb{height:38px;min-width:52px;padding:0 14px;border-radius:19px;background:rgba(92,225,168,.16);color:var(--accent);font-weight:600;font-size:14px;flex:none}
+.tr-rest .rb.sk{background:rgba(255,255,255,.1);color:var(--tx);font-weight:500}
