@@ -34,7 +34,7 @@ const UNITW: [RegExp, U, string][] = [
 ];
 const DEF_G: Record<U, number> = { g: 1, tbsp: 15, tsp: 5, cup: 240, slice: 30, unit: 0, handful: 30, can: 330 };
 
-const stems = (t: string): string[] => {
+export const stems = (t: string): string[] => {
   const out = [t];
   if (t.endsWith('ים')) out.push(t.slice(0, -2), t.slice(0, -2) + 'ה');
   if (t.endsWith('ות')) out.push(t.slice(0, -2) + 'ה', t.slice(0, -2));

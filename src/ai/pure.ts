@@ -12,7 +12,22 @@ export interface AiItem {
   source: 'label' | 'known' | 'estimate';
   note?: string;
 }
-export interface AiResult { reply: string; items: AiItem[]; memory: string[]; suggestions: string[]; fallback?: boolean }
+/** הצעה ליצירת מוצר חדש במאגר האישי: ערכים ל-100 גרם, ומשקל יחידה אם יש */
+export interface AiProduct {
+  id: string;
+  name: string;
+  brand?: string;
+  kcal100: number;
+  p100: number;
+  c100: number;
+  f100: number;
+  unitLabel?: string;
+  unitGrams?: number;
+  source: 'label' | 'web' | 'estimate' | 'user';
+  note?: string;
+  url?: string;
+}
+export interface AiResult { reply: string; items: AiItem[]; products: AiProduct[]; memory: string[]; suggestions: string[]; fallback?: boolean }
 export interface Source { title: string; uri: string }
 
 export const SYSTEM_PROMPT = `You are "workOut Coach": a personal sports-nutrition, bulking and training coach inside a private app, talking to ONE user: a 17-year-old Israeli guy who is building muscle (gaining weight on purpose) and trains about 3 times a week. You talk to him in Hebrew, casual, direct and warm, like a knowledgeable older training partner who studied sports nutrition. Short messages, no lectures, no filler.
@@ -29,9 +44,18 @@ SAFETY (he is a minor)
 - For teenagers keep the calorie surplus modest and food-first. Do not invent numbers or studies. Separate clearly: well established / likely / uncertain.
 
 REPLY FORMAT: return ONE JSON object only, no text around it, exactly this shape:
-{"reply":"Hebrew message","items":[{"name":"שם בעברית","grams":number,"kcal100":number,"p100":number,"c100":number,"f100":number,"confidence":"high"|"medium"|"low","source":"label"|"known"|"estimate","note":"optional very short Hebrew note"}],"memory":["optional short durable fact"],"suggestions":["optional short follow-up he may tap"]}
+{"reply":"Hebrew message","products":[{"name":"שם בעברית","brand":"optional","kcal100":number,"p100":number,"c100":number,"f100":number,"unitLabel":"יחידה","unitGrams":number,"source":"label"|"web"|"estimate","note":"optional very short Hebrew note","url":"optional page you used"}],"items":[{"name":"שם בעברית","grams":number,"kcal100":number,"p100":number,"c100":number,"f100":number,"confidence":"high"|"medium"|"low","source":"label"|"known"|"estimate","note":"optional very short Hebrew note"}],"memory":["optional short durable fact"],"suggestions":["optional short follow-up he may tap"]}
+
+Rules for "products" (proposals to create a NEW product in his personal food list; he must approve them, you never add anything by yourself):
+- Return [] unless one of these is true: (a) he describes or photographs a specific product that is NOT in [DATABASE MATCHES] (a packaged item, a restaurant dish he eats often, a homemade recipe); (b) he gives you totals for several units (for example "3 sausages, 5 of them have 60g protein") so you can work out one unit: compute per unit and then per 100g using the unit weight you know or ask for; (c) PRODUCT MODE is on.
+- Do NOT propose products for common foods that already appear in [DATABASE MATCHES] with sensible values.
+- Name = the singular product name in Hebrew ("נקניקיה", not "3 נקניקיות"). "unitLabel" and "unitGrams" describe ONE unit (a sausage 50g) when it makes sense. kcal100/p100/c100/f100 are per 100 g. Check that the numbers are consistent (4*p + 4*c + 9*f is close to kcal).
+- source: "label" when read from a nutrition label in the photo, "web" when from a web page (put the page in "url" and say which source in "note"), "estimate" when worked out or guessed.
+- Meal items still go in "items"; a product proposal does not replace them. After he approves the meal the app shows him the proposal.
 
 Rules for "reply":
+- You also answer general questions (time, schedule, planning his day, anything about the world). Use [NOW] and [APP DATA] for the current time, his workouts and calendar events, and the web tool for current facts. Keep it short and practical.
+- [DATABASE MATCHES] lists foods found in the Israeli Ministry of Health database and in his own list for the foods he mentioned (values per 100 g). Prefer those values; if a food he mentioned has no match, say so and consider a product proposal.
 - ALWAYS write a complete JSON object with a non-empty "reply" string (valid JSON: every key has a value, e.g. {"reply":"...","items":[],"memory":[],"suggestions":[]}). Never output only a key, a fragment or text outside the JSON.
 - Hebrew. Lightweight markdown only: **bold**, lines starting with "- " for bullets, blank lines between paragraphs. Keep it under about 120 words unless he asks for depth or the question really needs it. Lead with the answer, then the why.
 - When you used web sources, name the source (for example "לפי סקירה של ISSN") in the text.
@@ -105,7 +129,7 @@ export function parseAiJson(raw: string, makeId: () => string): AiResult {
   if (!j || typeof j !== 'object' || (!('reply' in j) && !('items' in j))) {
     if (!raw.trim()) throw new Error('לא התקבלה תשובה שימושית. נסה לנסח אחרת');
     const part = extractReply(raw);
-    return { reply: part || raw.trim(), items: [], memory: [], suggestions: [], fallback: true };
+    return { reply: part || raw.trim(), items: [], products: [], memory: [], suggestions: [], fallback: true };
   }
   const arr: any[] = Array.isArray(j.items) ? j.items : [];
   const items: AiItem[] = [];
@@ -125,9 +149,29 @@ export function parseAiJson(raw: string, makeId: () => string): AiResult {
       note: x?.note ? String(x.note) : undefined,
     });
   }
+  const products: AiProduct[] = [];
+  for (const x of Array.isArray(j.products) ? j.products : []) {
+    const name = String(x?.name ?? '').trim();
+    if (!name || products.length >= 3) continue;
+    const ug = num(x?.unitGrams, 0, 3000, 0);
+    products.push({
+      id: makeId(),
+      name,
+      brand: x?.brand ? String(x.brand).slice(0, 40) : undefined,
+      kcal100: num(x?.kcal100, 0, 950),
+      p100: num(x?.p100, 0, 100),
+      c100: num(x?.c100, 0, 100),
+      f100: num(x?.f100, 0, 100),
+      unitLabel: ug > 0 ? String(x?.unitLabel || 'יחידה').slice(0, 20) : undefined,
+      unitGrams: ug > 0 ? Math.round(ug * 10) / 10 : undefined,
+      source: ['label', 'web', 'estimate'].includes(x?.source) ? x.source : 'estimate',
+      note: x?.note ? String(x.note).slice(0, 140) : undefined,
+      url: typeof x?.url === 'string' && /^https?:\/\//.test(x.url) ? x.url : undefined,
+    });
+  }
   const reply = String(j?.reply ?? j?.question ?? j?.summary ?? '').trim();
-  if (!items.length && !reply) throw new Error('לא התקבלה תשובה שימושית. נסה לנסח אחרת');
-  return { reply, items, memory: strs(j.memory, 2, 140), suggestions: strs(j.suggestions, 3, 60) };
+  if (!items.length && !products.length && !reply) throw new Error('לא התקבלה תשובה שימושית. נסה לנסח אחרת');
+  return { reply, items, products, memory: strs(j.memory, 2, 140), suggestions: strs(j.suggestions, 3, 60) };
 }
 
 export const itemMacros = (it: { grams: number; kcal100: number; p100: number; c100: number; f100: number }) => ({

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { Check, Undo2, Globe, Brain, FileText } from 'lucide-preact';
-import { chat, retryLast, undoAdd } from '../ai/chat';
+import { chat, pendingProducts, retryLast, undoAdd } from '../ai/chat';
+import { ProductCard } from './ProductCard';
 import { Md } from './AiChat';
 
 /** רכיבי שיחה משותפים (הודעות, שורת סטטוס חיה, הצעות ושגיאות/מכסה) */
@@ -86,6 +87,9 @@ export function Messages({ onSuggest }: { onSuggest: (t: string) => void }) {
             {m.webFailed && <div class="mu" style={{ fontSize: 12, margin: '0 6px' }}>החיפוש באינטרנט לא זמין כרגע, אז זו תשובה בלי מקורות.</div>}
             {m.remembered?.length ? <div class="remb">{m.remembered.map((r) => <span><Brain />נשמר בזיכרון: {r}</span>)}</div> : null}
             {m.meta && <div class="mu num" style={{ fontSize: 11, margin: '0 6px', direction: 'ltr' }}>{m.meta.model} · {(m.meta.ms / 1000).toFixed(1)}s{m.meta.thinking ? ` · think:${m.meta.thinking}` : ''}{m.meta.web ? ' · web' : ''}</div>}
+            {pendingProducts(m).length > 0 && (m.card === 'draft'
+              ? <div class="mu" style={{ fontSize: 12, margin: '2px 6px' }}>יש הצעה למוצר חדש: {pendingProducts(m).map((x) => x.name).join(', ')}. היא תופיע אחרי שתאשר את הארוחה</div>
+              : pendingProducts(m).map((x) => <ProductCard key={x.id} msgId={m.id} p={x} onAddToMeal={m.card !== 'added'} />))}
             {m.card === 'draft' && <div class="mu" style={{ fontSize: 12, margin: '2px 6px' }}>הארוחה מוצגת במגש למטה, אפשר לדייק בגרמים</div>}
             {m.card === 'added' && (
               <div class="g mcard added">

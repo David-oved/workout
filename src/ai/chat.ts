@@ -7,12 +7,15 @@ import { chatTurn, type ChatTurn } from './gemini';
 import { buildAppData } from './context';
 import { macrosOf, tray } from '../ui/tray';
 import { enabledDocs } from './docs';
-import { extractReply, itemMacros, type AiItem, type Source } from './pure';
+import { extractReply, itemMacros, type AiItem, type AiProduct, type Source } from './pure';
+import { foodHints, nowBlock } from './hints';
 
 /**
  * שיחה עם ה-AI: הודעות, וכרטיס ארוחה שנבנה ומתעדכן במהלך השיחה.
  * כרטיס "draft" ניתן לעריכה ולהוספה ליום. כשה-AI מעדכן, הכרטיס הקודם מוחלף בחדש (card = "old").
  */
+export type ProdProp = AiProduct & { status: 'pending' | 'saved' | 'dismissed' };
+
 export interface Msg {
   id: string;
   role: 'user' | 'ai';
@@ -31,8 +34,10 @@ export interface Msg {
   remembered?: string[];
   suggestions?: string[];
   webFailed?: boolean;
+  products?: ProdProp[]; // הצעות למוצרים חדשים, מחכות לאישור שלך
+  hint?: string; // הנחיה נסתרת שנשלחת ל-AI עם ההודעה (לא מוצגת)
 }
-interface ChatState { messages: Msg[]; busy: boolean; error?: string; detail?: string; web: boolean; deep: boolean; stage?: { text: string; n: number }; quota?: { kind: 'minute' | 'day'; until: number; limit?: string; model?: string } }
+interface ChatState { messages: Msg[]; busy: boolean; product?: boolean; error?: string; detail?: string; web: boolean; deep: boolean; stage?: { text: string; n: number }; quota?: { kind: 'minute' | 'day'; until: number; limit?: string; model?: string } }
 
 export interface Attachment { url?: string; data: string; mime: string; name?: string }
 
@@ -97,7 +102,7 @@ const stripId = ({ id: _id, ...rest }: AiItem) => rest;
 
 type Lib = Awaited<ReturnType<typeof enabledDocs>>;
 
-function buildTurns(msgs: Msg[], lib: Lib): ChatTurn[] {
+function buildTurns(msgs: Msg[], lib: Lib, hints: string): ChatTurn[] {
   // שולחים קבצים רק מ-3 ההודעות האחרונות שיש בהן קבצים
   const withFiles = msgs.filter((m) => m.role === 'user' && fileData.get(m.id)?.length).map((m) => m.id);
   const keep = new Set(withFiles.slice(-3));
@@ -105,10 +110,11 @@ function buildTurns(msgs: Msg[], lib: Lib): ChatTurn[] {
     if (m.role === 'user') {
       const files = keep.has(m.id) ? fileData.get(m.id) : undefined;
       const note = !files && (m.images?.length || m.fileNames?.length) ? ' (צורף קובץ קודם)' : '';
-      return { role: 'user', text: m.text + note, images: files };
+      return { role: 'user', text: m.text + note + (m.hint ? `\n\n${m.hint}` : ''), images: files };
     }
     const items = m.items ?? m.sent ?? [];
-    return { role: 'model', text: JSON.stringify({ reply: m.text, items: items.map(stripId) }) };
+    const prods = (m.products ?? []).filter((p) => p.status === 'pending').map(({ id: _i, status: _s, ...p }) => p);
+    return { role: 'model', text: JSON.stringify({ reply: m.text, items: items.map(stripId), ...(prods.length ? { products: prods } : {}) }) };
   });
   // מסמכי הספרייה הכלולים: מצורפים להודעה הראשונה בשיחה
   const first = turns.find((t) => t.role === 'user');
@@ -126,7 +132,8 @@ function buildTurns(msgs: Msg[], lib: Lib): ChatTurn[] {
       const lines = manual.map((i) => `- ${i.name}: ${i.unit === 'g' ? `${Math.round(i.amount)} g` : `${i.amount} portion`} (about ${macrosOf(i).k} kcal, ${macrosOf(i).p}g protein)`);
       last.text += `\n\n[ALSO IN THE USER'S MEAL TRAY, added by tapping tiles, not part of your card]\n${lines.join('\n')}`;
     }
-    last.text += `\n\n${buildAppData(ui.get().addDate)}`;
+    if (hints) last.text += `\n\n${hints}`;
+    last.text += `\n\n${nowBlock()}\n\n${buildAppData(ui.get().addDate)}`;
   }
   return turns;
 }
@@ -145,7 +152,8 @@ function saveMemory(notes: string[]): string[] {
 
 async function runTurn() {
   const ph = uid();
-  const { web, deep } = chat.get();
+  const { deep } = chat.get();
+  const web = chat.get().web || !!chat.get().product;
   const lastUser = [...chat.get().messages].reverse().find((m) => m.role === 'user');
   const seenStages = new Set<string>();
   const once = (t: string) => { if (!seenStages.has(t)) { seenStages.add(t); stage(t); } };
@@ -164,7 +172,8 @@ async function runTurn() {
   try {
     const lib = await enabledDocs();
     if (lib.parts.length + lib.texts.length > 0) stage('קורא את המסמכים מהספרייה');
-    const turns = buildTurns(chat.get().messages.filter((m) => m.id !== ph), lib);
+    const hints = lastUser?.text ? await foodHints(lastUser.text).catch(() => '') : '';
+    const turns = buildTurns(chat.get().messages.filter((m) => m.id !== ph), lib, hints);
     const res = await chatTurn(turns, {
       web,
       deep,
@@ -192,6 +201,7 @@ async function runTurn() {
         remembered: remembered.length ? remembered : undefined,
         suggestions: res.suggestions.length ? res.suggestions : undefined,
         webFailed: res.webFailed || undefined,
+        products: res.products.length ? res.products.map((p) => ({ ...p, status: 'pending' as const })) : undefined,
       };
       if (res.items.length) {
         const prev = msgs.map((m, i) => [m, i] as const).reverse().find(([m]) => m.card === 'draft');
@@ -216,12 +226,16 @@ async function runTurn() {
   }
 }
 
-export async function sendMessage(text: string, files: Attachment[]) {
+const PRODUCT_HINT = '[PRODUCT MODE] He wants to add a NEW product to his food list. Identify the product in the photo (name, brand, flavour or variant). If a nutrition label is visible, read it exactly (source "label"; convert per-serving values to per 100 g). If it is not visible, search the web for its nutrition values per 100 g, Israeli sources first (manufacturer site, supermarket product pages, the Ministry of Health database) and put the page in "url" (source "web"). Return exactly one entry in "products", add "unitLabel" and "unitGrams" if the pack shows a unit or serving weight. Do NOT put anything in "items" unless he says he ate it. If you could not find reliable values, say what is missing and ask for a photo of the back of the pack. He can correct you in the chat; return the full updated product each time.';
+
+export async function sendMessage(text: string, files: Attachment[], opts?: { product?: boolean }) {
   if (chat.get().busy) return;
+  if (opts?.product) chat.set((s) => ({ ...s, product: true }));
   const m: Msg = {
     id: uid(),
     role: 'user',
-    text: text.trim(),
+    text: text.trim() || (opts?.product ? 'מוצר חדש מהתמונה' : ''),
+    hint: opts?.product ? PRODUCT_HINT : undefined,
     images: files.filter((f) => f.mime.startsWith('image/') && f.url).map((f) => f.url!),
     fileNames: files.filter((f) => !f.mime.startsWith('image/')).map((f) => f.name ?? 'מסמך'),
   };
@@ -281,3 +295,12 @@ export function undoAdd(msgId: string) {
   actions.removeEntries(m.addedIds);
   patchMsg(msgId, (x) => ({ ...x, card: 'draft', addedIds: undefined, addedLabel: undefined }));
 }
+
+/** עריכת שדות של הצעת מוצר לפני האישור */
+export const setProductField = (msgId: string, pid: string, patch: Partial<AiProduct>) =>
+  patchMsg(msgId, (m) => ({ ...m, products: m.products?.map((p) => (p.id === pid ? { ...p, ...patch, source: patch.source ?? (p.source === 'estimate' ? 'user' : p.source) } : p)) }));
+
+export const resolveProduct = (msgId: string, pid: string, status: 'saved' | 'dismissed') =>
+  patchMsg(msgId, (m) => ({ ...m, products: m.products?.map((p) => (p.id === pid ? { ...p, status } : p)) }));
+
+export const pendingProducts = (m?: Msg) => (m?.products ?? []).filter((p) => p.status === 'pending');

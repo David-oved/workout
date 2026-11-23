@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
-import { Check, HelpCircle, X, Plus, Minus, Sparkles, Camera, Paperclip, ArrowUp, ChevronDown, Star, Globe, Brain, ChevronRight, Pencil, Info, MessageSquarePlus, Utensils, History, PencilLine } from 'lucide-preact';
+import { ScanLine, Check, HelpCircle, X, Plus, Minus, Sparkles, Camera, Paperclip, ArrowUp, ChevronDown, Star, Globe, Brain, ChevronRight, Pencil, Info, MessageSquarePlus, Utensils, History, PencilLine } from 'lucide-preact';
 import { store } from '../core/state';
 import { actions } from '../core/actions';
 import { dayInfo, fmt } from '../core/calc';
@@ -9,13 +9,14 @@ import { ui, setUi, toast } from '../ui/ui';
 import { BigSheet, Sheet } from '../ui/components';
 import { aiState } from '../ai/gemini';
 import { fileToAttachment } from '../ai/image';
-import { chat, draftOf, markAdded, removeItem, resetChat, restoreChat, sendMessage, setDeep, setGrams, setPer, setWeb, undoAdd, type Attachment } from '../ai/chat';
+import { chat, draftOf, markAdded, pendingProducts, removeItem, resetChat, restoreChat, sendMessage, setDeep, setGrams, setPer, setWeb, undoAdd, type Attachment } from '../ai/chat';
 import { AiSetup } from './AiChat';
 import { Messages } from './AiParts';
 import { buildCandidates, candMacros, defaultPortion, gapSuggestions, macrosOf, makeEntries, parseEntry, searchCandidates, stepFor, topTiles, tray, trayAdd, trayAddDish, trayAddFood, trayClear, trayPer, trayPerByFood, trayRemove, traySet, traySetName, traySetOne, type Cand, type TItem } from '../ui/tray';
 import { dbState, getFood, loadDb, searchFoods, type FoodRec } from '../data/foodDb';
 import { AmtInput, FoodPicker, FoodRow } from './FoodPicker';
 import { PotSheet } from './Pot';
+import { ProductCard } from './ProductCard';
 import { parseMeal, parseNewProduct, type Parsed } from '../core/parse';
 
 const Kcal = ({ m }: { m: { k: number } }) => <span class="num">{m.k}</span>;
@@ -58,13 +59,15 @@ export function AddScreen() {
   const [altOpen, setAltOpen] = useState<Record<number, boolean>>({});
   const bodyRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const prodRef = useRef<HTMLInputElement>(null);
+  const [propMsg, setPropMsg] = useState<string | null>(null);
   const inRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!open) return;
     trayClear();
     void loadDb();
-    setQ(''); setAlt({}); setFiles([]); setOpenRow(null); setSlotOpen(false); setMore(false); setSheet(null); setErr(''); setEditTiles(false); setTrayOpen(true);
+    setPropMsg(null); setQ(''); setAlt({}); setFiles([]); setOpenRow(null); setSlotOpen(false); setMore(false); setSheet(null); setErr(''); setEditTiles(false); setTrayOpen(true);
     setView(addView === 'chat' || draftOf(chat.get().messages) ? 'chat' : 'tiles');
   }, [open]);
 
@@ -129,6 +132,19 @@ export function AddScreen() {
     void sendMessage(t, fs);
     setTimeout(() => { const b = bodyRef.current; if (b) b.scrollTo({ top: b.scrollHeight, behavior: 'smooth' }); }, 80);
   };
+  const onProductFile = async (e: Event) => {
+    const input = e.target as HTMLInputElement;
+    const picked = [...(input.files ?? [])].slice(0, 2);
+    input.value = '';
+    if (!picked.length) return;
+    setFileBusy(true);
+    try {
+      const out = await Promise.all(picked.map((f) => fileToAttachment(f)));
+      setView('chat');
+      void sendMessage('', out, { product: true });
+    } catch (er) { toast((er as Error).message); }
+    setFileBusy(false);
+  };
   const onFiles = async (e: Event) => {
     const input = e.target as HTMLInputElement;
     const picked = [...(input.files ?? [])].slice(0, 3 - files.length);
@@ -184,6 +200,12 @@ export function AddScreen() {
     }
     if (draft) markAdded(draft.id, ids, slotName);
     trayClear();
+    // ה-AI הציע מוצרים חדשים? מציגים אותם לאישור אחרי שהארוחה כבר נוספה
+    if (draft && pendingProducts(draft).length) {
+      setPropMsg(draft.id);
+      toast(`נוסף ל${slotName}`, () => { undoDish.forEach((f) => f()); undoAdd(draft.id); });
+      return;
+    }
     close();
     toast(`נוסף ל${slotName}`, () => { undoDish.forEach((f) => f()); if (draft) undoAdd(draft.id); else actions.removeEntries(ids); });
   };
@@ -277,6 +299,9 @@ export function AddScreen() {
   };
   const lastUser = [...ch.messages].reverse().find((m) => m.role === 'user')?.text ?? '';
 
+  const propM = propMsg ? ch.messages.find((m) => m.id === propMsg) : undefined;
+  const propPending = pendingProducts(propM);
+  useEffect(() => { if (propMsg && !propPending.length) { setPropMsg(null); close(); } }, [propMsg, propPending.length]);
   const showTray = all.length > 0;
   const tabInfo = TABS.find((t) => t.id === tab)!;
 
@@ -317,6 +342,7 @@ export function AddScreen() {
           {fileBusy && <span class="thumb ld" />}
         </div>
       )}
+      <input ref={prodRef} type="file" accept="image/*" multiple style={{ display: 'none' }} onChange={onProductFile} />
       <input ref={fileRef} type="file" accept="image/*,application/pdf" multiple style={{ display: 'none' }} onChange={onFiles} />
 
       <div class="as-body" ref={bodyRef} style={{ paddingBottom: showTray ? (trayOpen ? 430 : 190) : 100 }}>
@@ -490,6 +516,7 @@ export function AddScreen() {
             <div class="as-more">
               <button disabled={!ydayEntries.length} onClick={copyYesterday}><History />כמו אתמול</button>
               <button onClick={() => setSheet('manual')}><PencilLine />הזנה ידנית</button>
+              <button onClick={() => prodRef.current?.click()}><ScanLine />צלם מוצר</button>
             </div>
           </>
         )}
@@ -575,6 +602,12 @@ export function AddScreen() {
           </button>
         </div>
       )}
+
+      <Sheet open={!!propMsg && propPending.length > 0} onClose={() => { setPropMsg(null); close(); }}>
+        <h3>שמירת מוצר חדש</h3>
+        <div class="mu" style={{ fontSize: 13, margin: '2px 0 8px', lineHeight: 1.5 }}>הארוחה נוספה. ה-AI הציע לשמור את זה כמוצר, כדי שבפעם הבאה תוסיף אותו בלחיצה. כלום לא נשמר בלי אישור.</div>
+        {propPending.map((x) => <ProductCard key={x.id} msgId={propMsg!} p={x} />)}
+      </Sheet>
 
       <Sheet open={sheet === 'addtile'} onClose={() => setSheet(null)}>
         <h3>הוסף אריח</h3>
