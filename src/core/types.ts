@@ -75,7 +75,16 @@ export interface Weigh { date: string; kg: number }
 export interface Profile { age: number; heightCm: number; weightKg: number; goalKg: number; pace: 'slow' | 'mid' | 'fast' }
 
 /** תזכורות: ארוחות לפי שעות הארוחות, שקילה שבועית, סגירת יום, ו"דחיפות" בתוך האפליקציה */
-export interface Remind { meals: Record<string, boolean>; weigh: { on: boolean; dow: number; time: string }; close: { on: boolean; time: string }; nudges: boolean }
+export interface Remind {
+  v?: number;
+  meals: Record<string, boolean>;
+  weigh: { on: boolean; dow: number; time: string };
+  close: { on: boolean; time: string };
+  nudges: boolean;
+  /** "מצב היום": התראה עם כמה אכלת וכמה נשאר, כמה פעמים ביום (הטקסט מחושב ברגע ההתראה) */
+  status: { on: boolean; times: string[]; quiet: { from: string; to: string } };
+  workouts: boolean; // התראת Push לפני אימון
+}
 
 export interface Settings {
   profile: Profile;

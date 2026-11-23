@@ -742,3 +742,7 @@ select.inp{background-image:none}
 
 .mc .ate{font-size:13.5px;margin-top:2px}
 .mc .ate b{font-weight:600}
+
+.tm{display:inline-flex;align-items:center;gap:4px;background:rgba(255,255,255,.07);border-radius:16px;padding:2px 4px 2px 8px}
+.tm .inp{width:96px;height:36px;padding:0 6px;background:transparent;border:0}
+.tm button{width:26px;height:26px;border-radius:50%;background:rgba(255,255,255,.1);display:flex;align-items:center;justify-content:center}

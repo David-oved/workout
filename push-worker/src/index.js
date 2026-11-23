@@ -45,7 +45,7 @@ const clean = (list) =>
   (Array.isArray(list) ? list : [])
     .filter((x) => x && typeof x.at === 'number' && typeof x.title === 'string')
     .slice(0, 400)
-    .map((x) => ({ id: String(x.id ?? '').slice(0, 60), at: Math.round(x.at), title: x.title.slice(0, 80), body: String(x.body ?? '').slice(0, 140) }));
+    .map((x) => ({ id: String(x.id ?? '').slice(0, 60), at: Math.round(x.at), title: x.title.slice(0, 80), body: String(x.body ?? '').slice(0, 140), kind: typeof x.kind === 'string' ? x.kind.slice(0, 12) : undefined }));
 
 function cors(req) {
   const o = req.headers.get('Origin');

@@ -35,27 +35,46 @@ export function buildReminders(s: State, from: string, to: string, now = new Dat
   return out;
 }
 
-export interface PushItem { id: string; at: number; title: string; body: string }
+export interface PushItem { id: string; at: number; title: string; body: string; kind?: string }
 const localMs = (date: string, time: string) => { const [y, m, d] = date.split('-').map(Number); const [h, mi] = time.split(':').map(Number); return new Date(y, m - 1, d, h, mi).getTime(); };
 
-/** לוח ההתראות לשרת ה-Push: תזכורות + התראה לפני כל אימון, בשעות מוחלטות */
+const inQuiet = (at: number, q: { from: string; to: string }) => {
+  const d = new Date(at);
+  const m = d.getHours() * 60 + d.getMinutes();
+  const f = hm(q.from), to = hm(q.to);
+  if (f === to) return false;
+  return f < to ? m >= f && m < to : m >= f || m < to;
+};
+
+/** לוח ההתראות לשרת ה-Push: "מצב היום" (טקסט מחושב ברגע ההתראה), ובמידת הצורך תזכורות ואימונים. בלי שעות שקט */
 export function buildSchedule(s: State, now = new Date()): PushItem[] {
   const today = todayKey(s.settings.resetHour);
   const to = addDays(today, HORIZON);
+  const r = s.settings.remind;
   const out: PushItem[] = [];
-  for (const r of buildReminders(s, today, to, now)) {
-    const kind = r.id.split(':')[1];
-    const [title, body] = r.title.includes(': ') ? r.title.split(': ') : [r.title, ''];
+  if (r.status.on) {
+    for (let d = today; d <= to; d = addDays(d, 1)) {
+      for (const t of r.status.times) {
+        const at = localMs(d, t);
+        if (at > now.getTime()) out.push({ id: `st:${d}:${t}`, at, title: 'מצב היום', body: 'פתח לראות כמה נשאר', kind: 'status' });
+      }
+    }
+  }
+  for (const it of buildReminders(s, today, to, now)) {
+    const kind = it.id.split(':')[1];
+    const [title, body] = it.title.includes(': ') ? it.title.split(': ') : [it.title, ''];
     const b = kind === 'm' ? 'רשום מה אכלת' : kind === 'w' ? 'עדיף בבוקר, לפני אוכל ושתייה' : kind === 'c' ? 'חסר משהו ביומן של היום?' : body;
-    out.push({ id: r.id, at: localMs(r.date, r.time), title: kind === 'c' ? '📝 סגירת יום' : title, body: b });
+    out.push({ id: it.id, at: localMs(it.date, it.time), title: kind === 'c' ? '📝 סגירת יום' : title, body: b });
   }
-  const lead = s.settings.cal.alertMin > 0 ? s.settings.cal.alertMin : 30;
-  for (const w of s.workouts) {
-    if (w.status !== 'planned' || w.date < today || w.date > to) continue;
-    const at = localMs(w.date, w.time) - lead * 60000;
-    if (at > now.getTime()) out.push({ id: `wk:${w.id}`, at, title: `🏋 ${w.title}`, body: `מתחיל ב-${w.time}` });
+  if (r.workouts) {
+    const lead = s.settings.cal.alertMin > 0 ? s.settings.cal.alertMin : 30;
+    for (const w of s.workouts) {
+      if (w.status !== 'planned' || w.date < today || w.date > to) continue;
+      const at = localMs(w.date, w.time) - lead * 60000;
+      if (at > now.getTime()) out.push({ id: `wk:${w.id}`, at, title: `🏋 ${w.title}`, body: `מתחיל ב-${w.time}` });
+    }
   }
-  return out.sort((a, b) => a.at - b.at);
+  return out.filter((x) => !inQuiet(x.at, r.status.quiet)).sort((a, b) => a.at - b.at);
 }
 
 /** מפתח שמשתנה רק כשהתזכורות צריכות להשתנות (הגדרות, ארוחות, מה נרשם היום) */

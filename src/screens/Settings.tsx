@@ -276,6 +276,38 @@ function SettingsBody() {
                 {br.connected && (br.scriptV ?? 1) < 2 && <div class="note" style={{ color: 'var(--warn)', margin: '10px 0 0' }}>הסקריפט ב-Google בגרסה ישנה, ולכן ההתראה תגיע {set.cal.alertMin} דקות לפני כל תזכורת במקום בשעה עצמה. לעדכון מדויק: הגדרות ← Google Calendar ← העתק קוד, ואז פרסם גרסה חדשה.</div>}
               </div>
 
+              <div class="sec"><span>מצב היום (התראה עם נתונים)</span></div>
+              <div class="g rows">
+                <button class="row2" onClick={() => setR({ status: { ...r.status, on: !r.status.on } })}>
+                  <span>כמה אכלתי וכמה נשאר<small>"נשארו 1,400 קל׳ להיום" + חלבון. המספרים מחושבים ברגע ההתראה</small></span>
+                  <span class={'tgl' + (r.status.on ? ' on' : '')} />
+                </button>
+                {r.status.on && (
+                  <div style={{ padding: '4px 16px 14px' }}>
+                    <div class="mu" style={{ fontSize: 13, marginBottom: 8 }}>שעות ההתראה</div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                      {r.status.times.map((tm, i) => (
+                        <span class="tm" key={i}>
+                          <input class="inp num" type="time" value={tm} onChange={(e) => setR({ status: { ...r.status, times: r.status.times.map((x, j) => (j === i ? nv(e) || x : x)).sort() } })} />
+                          <button aria-label="הסר שעה" onClick={() => setR({ status: { ...r.status, times: r.status.times.filter((_, j) => j !== i) } })}><X size={14} /></button>
+                        </span>
+                      ))}
+                      {r.status.times.length < 8 && <button class="chip" onClick={() => setR({ status: { ...r.status, times: [...r.status.times, '16:00'].sort() } })}><Plus size={14} /> שעה</button>}
+                    </div>
+                    <div class="mu" style={{ fontSize: 13, margin: '14px 0 8px' }}>שעות שקט (בלי התראות)</div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <input class="inp num" type="time" value={r.status.quiet.from} onChange={(e) => setR({ status: { ...r.status, quiet: { ...r.status.quiet, from: nv(e) || r.status.quiet.from } } })} />
+                      <span class="mu">עד</span>
+                      <input class="inp num" type="time" value={r.status.quiet.to} onChange={(e) => setR({ status: { ...r.status, quiet: { ...r.status.quiet, to: nv(e) || r.status.quiet.to } } })} />
+                    </div>
+                  </div>
+                )}
+                <button class="row2" onClick={() => setR({ workouts: !r.workouts })}>
+                  <span>התראה לפני אימון<small>{set.cal.alertMin || 30} דקות לפני כל אימון מתוכנן</small></span>
+                  <span class={'tgl' + (r.workouts ? ' on' : '')} />
+                </button>
+              </div>
+
               <div class="sec"><span>ארוחות</span></div>
               <div class="g rows">
                 {set.slots.map((sl) => (
