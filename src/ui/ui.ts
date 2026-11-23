@@ -21,6 +21,8 @@ export interface Ui {
   summary: string | null; // תאריך הסיכום הפתוח
   plan: { dayId: string | null } | null; // מסך תוכנית האימונים
   toast: Toast | null;
+  /** מבט מהיר: מסך היום נפתח רק עם המדדים וכפתור הוספה. מחליקים למעלה למצב רגיל */
+  glance: boolean;
 }
 
 const reset = store.get().settings.resetHour;
@@ -40,6 +42,7 @@ export const ui = createStore<Ui>({
   summary: null,
   plan: null,
   toast: null,
+  glance: true,
 });
 
 export const setUi = (patch: Partial<Ui>) => ui.set((s) => ({ ...s, ...patch }));

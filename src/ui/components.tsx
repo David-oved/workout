@@ -78,6 +78,7 @@ const TABS: { id: Tab; label: string; Icon: typeof House }[] = [
 
 export function Dock({ onAdd }: { onAdd: () => void }) {
   const tab = ui.use((s) => s.tab);
+  const hide = ui.use((s) => s.glance && s.tab === 'today'); // במבט מהיר אין סרגל
   const bar = useRef<HTMLElement>(null);
   const bub = useRef<HTMLDivElement>(null);
   const idx = TABS.findIndex((t) => t.id === tab);
@@ -140,7 +141,7 @@ export function Dock({ onAdd }: { onAdd: () => void }) {
 
   const cur = shown ?? idx;
   return (
-    <div class="dock">
+    <div class={'dock' + (hide ? ' hide' : '')}>
       <nav class="g bar" ref={bar as any} style={{ borderRadius: 34 }} onPointerDown={down as any} onPointerMove={move as any} onPointerUp={up as any} onPointerCancel={cancel}>
         <div class="bub" ref={bub} style={{ '--i': idx } as any} aria-hidden="true">
           <div class="lns">

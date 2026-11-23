@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
-import { Sparkles, Bell, X, Droplets, ListChecks, Minus, Settings as Cog, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, ChevronsUpDown, Plus, Dumbbell, Check, Copy, Download, Siren, RefreshCw } from 'lucide-preact';
+import { Sparkles, Bell, X, Droplets, ListChecks, Minus, Settings as Cog, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, ChevronsUpDown, Maximize2, Plus, Dumbbell, Check, Copy, Download, Siren, RefreshCw } from 'lucide-preact';
 import { CountNum } from '../ui/anim';
 import { burst, rain, confetti, floatText } from '../ui/fx';
 import { streakOf } from '../core/streak';
@@ -130,20 +130,24 @@ export function TodayScreen() {
   const taps = useRef({ t: 0, n: 0, r: 0 });
   const ringRef = useRef<HTMLDivElement>(null);
   const scr = useRef<HTMLElement>(null);
-  const raf = useRef(0);
-  // גלילה: הכרטיסים העליונים נסוגים והגיליון עולה מעליהם. --sp = כמה גללנו (0..1)
-  const onScroll = () => {
-    if (raf.current) return;
-    raf.current = requestAnimationFrame(() => {
-      raf.current = 0;
-      const el = scr.current;
-      if (!el) return;
-      const sh = (el.querySelector('.sheetb') as HTMLElement | null)?.offsetTop ?? 600; // כמה צריך לגלול עד שהגיליון נצמד לראש המסך
-      el.style.setProperty('--sp', Math.min(1, el.scrollTop / Math.max(200, sh * 0.6)).toFixed(3));
-      el.style.setProperty('--sk', Math.max(0, Math.min(1, (el.scrollTop - (sh - 80)) / 80)).toFixed(3));
-    });
+  const glance = ui.use((u) => u.glance);
+  const gl = useRef<HTMLDivElement>(null);
+  const gd = useRef({ on: false, y0: 0, t0: 0, dy: 0 });
+  const pd = useRef({ on: false, y0: 0, dy: 0 });
+  const [rvk, setRvk] = useState(0);
+  // מצב רגיל: מציירים מחדש את כניסת הכרטיסים כשהוילון עולה
+  useEffect(() => { if (!glance) setRvk((k) => k + 1); }, [glance]);
+  const openNormal = () => { gl.current?.style.removeProperty('--gd'); setUi({ glance: false }); };
+  const gStart = (e: TouchEvent) => { gd.current = { on: true, y0: e.touches[0].clientY, t0: Date.now(), dy: 0 }; gl.current?.classList.add('drag'); };
+  const gMove = (e: TouchEvent) => { const d = gd.current; if (!d.on) return; d.dy = Math.max(0, d.y0 - e.touches[0].clientY); gl.current?.style.setProperty('--gd', d.dy + 'px'); };
+  const gEnd = () => {
+    const d = gd.current;
+    if (!d.on) return;
+    d.on = false;
+    gl.current?.classList.remove('drag');
+    const v = d.dy / Math.max(1, Date.now() - d.t0);
+    if (d.dy > 110 || (d.dy > 40 && v > 0.5)) openNormal(); else gl.current?.style.removeProperty('--gd');
   };
-  const peek = () => { const el = scr.current; if (el) el.scrollTo({ top: el.scrollTop < 60 ? 340 : 0, behavior: 'smooth' }); };
   const date = ui.use((u) => u.date);
   const tab = ui.use((u) => u.tab);
   const today = todayKey(s.settings.resetHour);
@@ -237,64 +241,66 @@ export function TodayScreen() {
     );
   };
 
+
+  const hdEl = (g: boolean) => (
+    <div class="hd">
+      <div>
+        <button class="t" style={{ display: 'block', textAlign: 'right' }} onClick={tapTitle}>{dayLabel(date, today)}</button>
+        <div class="s">{sub}</div>
+        {streak >= 2 && <button class="streak" onClick={() => toast(`${streak} ימים ברצף שאתה מתעד. אל תשבור!`)}><span class="fl">🔥</span><b class="num">{streak}</b> ימים ברצף</button>}
+      </div>
+      <div style={{ display: 'flex', gap: 8 }}>
+        <button class="g ib" aria-label="היום הקודם" onClick={() => go(-1)}><ChevronRight /></button>
+        <button class="g ib" aria-label="היום הבא" onClick={() => go(1)}><ChevronLeft /></button>
+        {!g && <button class="g ib" aria-label="מבט מהיר" onClick={() => setUi({ glance: true })}><Maximize2 /></button>}
+        <button class="g ib" aria-label="הגדרות" onClick={() => setUi({ settingsOpen: true })}><Cog /></button>
+      </div>
+    </div>
+  );
+  const heroEl = (big: boolean) => (
+    <div class={'g hero' + (big ? ' v' : '') + (left < 0 ? ' over' : '')}>
+      <div class="hrw" ref={big ? undefined : ringRef} onClick={big ? undefined : tapRing}>
+        <Ring size={big ? 200 : 150} stroke={big ? 15 : 12} pct={eaten.k / target.k} color={left < 0 ? 'var(--warn)' : 'var(--accent)'}>
+          <div class="rc">
+            <div class="big num"><CountNum v={Math.abs(left)} /></div>
+            <div class="mu">{left < 0 ? 'קלוריות מעל היעד' : 'קלוריות נשארו'}</div>
+          </div>
+        </Ring>
+      </div>
+      <div class="st">
+        <div><span class="mu">אכלתי</span><b class="num"><CountNum v={eaten.k} /></b></div>
+        <div><span class="mu">יעד {info.training ? '· יום אימון' : '· יום מנוחה'}</span><b class="num">{fmt(target.k)}</b></div>
+      </div>
+    </div>
+  );
+  const macrosEl = (big: boolean) => (
+    <div class="mini">
+      {MACROS.map((m) => {
+        const rem = target[m.k] - eaten[m.k];
+        return (
+          <div class="g mc" key={m.k}>
+            <Ring size={big ? 78 : 70} stroke={big ? 7 : 6.5} pct={eaten[m.k] / target[m.k]} color={m.color} cls="mr">
+              <span class="num"><CountNum v={Math.abs(rem)} raw /></span>
+            </Ring>
+            <div style={{ fontSize: 14 }}>{m.name}</div>
+            <div class="ate num"><b style={{ color: m.color }}><CountNum v={eaten[m.k]} raw /></b> ג׳ אכלתי</div>
+            <div class="mu">{rem < 0 ? `מעל היעד (${target[m.k]})` : `מתוך ${target[m.k]} ג׳`}</div>
+          </div>
+        );
+      })}
+    </div>
+  );
+
   return (
-    <section class={'screen tdy' + (tab === 'today' ? ' on' : '')} aria-label="היום" ref={scr} onScroll={onScroll}>
-     <div class="stage">
-      <div class="hd">
-        <div>
-          <button class="t" style={{ display: 'block', textAlign: 'right' }} onClick={tapTitle}>{dayLabel(date, today)}</button>
-          <div class="s">{sub}</div>
-          {streak >= 2 && <button class="streak" onClick={() => toast(`${streak} ימים ברצף שאתה מתעד. אל תשבור!`)}><span class="fl">🔥</span><b class="num">{streak}</b> ימים ברצף</button>}
-        </div>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <button class="g ib" aria-label="היום הקודם" onClick={() => go(-1)}><ChevronRight /></button>
-          <button class="g ib" aria-label="היום הבא" onClick={() => go(1)}><ChevronLeft /></button>
-          <button class="g ib" aria-label="הגדרות" onClick={() => setUi({ settingsOpen: true })}><Cog /></button>
-        </div>
-      </div>
+    <>
+    <section class={'screen rv' + (rvk % 2) + (tab === 'today' ? ' on' : '')} aria-label="היום" ref={scr}
+      onTouchStart={(e: TouchEvent) => { const el = scr.current; pd.current = { on: !!el && el.scrollTop <= 0, y0: e.touches[0].clientY, dy: 0 }; }}
+      onTouchMove={(e: TouchEvent) => { if (pd.current.on) pd.current.dy = e.touches[0].clientY - pd.current.y0; }}
+      onTouchEnd={() => { if (pd.current.on && pd.current.dy > 120) setUi({ glance: true }); pd.current.on = false; }}>
+      {hdEl(false)}
+      {heroEl(false)}
+      {macrosEl(false)}
 
-      <div class="stg-mid">
-      <div class={'g hero' + (left < 0 ? ' over' : '')}>
-        <div class="hrw" ref={ringRef} onClick={tapRing}>
-          <Ring size={170} stroke={13} pct={eaten.k / target.k} color={left < 0 ? 'var(--warn)' : 'var(--accent)'}>
-            <div class="rc">
-              <div class="big num"><CountNum v={Math.abs(left)} /></div>
-              <div class="mu">{left < 0 ? 'קלוריות מעל היעד' : 'קלוריות נשארו'}</div>
-            </div>
-          </Ring>
-        </div>
-        <div class="st">
-          <div><span class="mu">אכלתי</span><b class="num"><CountNum v={eaten.k} /></b></div>
-          <div><span class="mu">יעד {info.training ? '· יום אימון' : '· יום מנוחה'}</span><b class="num">{fmt(target.k)}</b></div>
-        </div>
-      </div>
-
-      <div class="mini">
-        {MACROS.map((m) => {
-          const rem = target[m.k] - eaten[m.k];
-          return (
-            <div class="g mc" key={m.k}>
-              <Ring size={70} stroke={6.5} pct={eaten[m.k] / target[m.k]} color={m.color} cls="mr">
-                <span class="num"><CountNum v={Math.abs(rem)} raw /></span>
-              </Ring>
-              <div style={{ fontSize: 14 }}>{m.name}</div>
-              <div class="ate num"><b style={{ color: m.color }}><CountNum v={eaten[m.k]} raw /></b> ג׳ אכלתי</div>
-              <div class="mu">{rem < 0 ? `מעל היעד (${target[m.k]})` : `מתוך ${target[m.k]} ג׳`}</div>
-            </div>
-          );
-        })}
-      </div>
-
-      </div>
-     </div>
-
-     <div class="sheetb">
-      <button class="mbar" onClick={peek} aria-label="עוד מהיום">
-        <i class="mb-h" />
-        <span class="mb-r"><b>{dayLabel(date, today)}</b><small class="mu">{left < 0 ? `${fmt(-left)} קל׳ מעל היעד` : `${fmt(left)} קל׳ נשארו`}{target.p - eaten.p > 0 ? ` · ${target.p - eaten.p} ג׳ חלבון` : ''}</small></span>
-        <span class="mb-c"><ChevronUp /></span>
-      </button>
-      <div class="sb-in">
       {date === today && <Nudges today={today} />}
       {date === today && <Ideas date={date} today={today} />}
 
@@ -372,8 +378,16 @@ export function TodayScreen() {
           <span style={{ flex: 1 }}>עבר יותר משבוע מהגיבוי האחרון<span class="mu" style={{ display: 'block' }}>הנתונים נשמרים רק בטלפון. כדאי לגבות.</span></span>
         </button>
       )}
-      </div>
-     </div>
     </section>
+    <div class={'glance' + (glance ? '' : ' off') + (tab === 'today' ? '' : ' hid')} ref={gl} onTouchStart={gStart as never} onTouchMove={gMove as never} onTouchEnd={gEnd} onTouchCancel={gEnd} aria-label="מבט מהיר">
+      {hdEl(true)}
+      <div class="gl-mid">
+        {heroEl(true)}
+        {macrosEl(true)}
+        <button class="btn primary block gl-add" onClick={() => openAdd(undefined, date)}><Plus />הוסף ארוחה</button>
+      </div>
+      <button class="gl-pull" onClick={openNormal} aria-label="הצג את כל היום"><i class="mb-h" /><ChevronUp /><small>החלק למעלה לכל היום</small></button>
+    </div>
+    </>
   );
 }

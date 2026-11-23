@@ -920,29 +920,7 @@ body.fx .streak .fl{animation:flame 1.4s ease-in-out infinite}
 .tr-rest .rb{height:38px;min-width:52px;padding:0 14px;border-radius:19px;background:rgba(92,225,168,.16);color:var(--accent);font-weight:600;font-size:14px;flex:none}
 .tr-rest .rb.sk{background:rgba(255,255,255,.1);color:var(--tx);font-weight:500}
 
-/* ---------- v0.20: מסך בית עם במה וגיליון עולה, וארוחות מתכווצות ---------- */
-.screen.tdy{padding-bottom:0}
-.stage{position:sticky;top:calc(var(--st) + 14px);height:calc(100% - 160px);min-height:470px;display:flex;flex-direction:column;transform-origin:50% 25%;
-  transform:scale(calc(1 - var(--sp,0)*.1));opacity:calc(1 - var(--sp,0)*.88)}
-.stage .hd{margin-bottom:0}
-.stg-mid{margin:auto 0;display:flex;flex-direction:column;gap:12px}
-.stg-mid .mini{margin-top:0}
-.stg-mid .hero .big{font-size:40px}
-.stg-mid .hero{padding:20px 18px}
-
-.sheetb{position:relative;z-index:3;margin:0 -20px;padding:0 20px calc(var(--dock-h) + var(--dock-b) + 70px);min-height:calc(100% + var(--st) + 14px);
-  border-radius:32px 32px 0 0;background:linear-gradient(180deg,#171a21 0,#0d0f13 460px);border-top:.5px solid rgba(255,255,255,.2);box-shadow:0 -18px 46px rgba(0,0,0,.6)}
-.mbar{position:sticky;top:calc(-1*(var(--st) + 14px));z-index:4;display:flex;align-items:center;gap:12px;width:calc(100% + 40px);margin:0 -20px 4px;padding:calc(20px + var(--st)*var(--sk,0)) 22px 12px;text-align:right;
-  background:#171a21;border-radius:calc(32px*(1 - var(--sk,0))) calc(32px*(1 - var(--sk,0))) 0 0;border-bottom:.5px solid rgba(255,255,255,calc(var(--sk,0)*.1))}
-.mb-h{position:absolute;top:8px;left:50%;width:38px;height:5px;margin-left:-19px;border-radius:3px;background:rgba(255,255,255,.3)}
-.mb-r{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
-.mb-r b{font-size:18px;font-weight:600}
-.mb-r small{font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.mb-c{width:34px;height:34px;border-radius:50%;background:rgba(255,255,255,.09);display:flex;align-items:center;justify-content:center;flex:none;opacity:calc(1 - var(--sp,0)*2)}
-.mb-c svg{width:18px;height:18px;color:var(--accent)}
-@keyframes cue{0%,100%{transform:translateY(2px)}50%{transform:translateY(-3px)}}
-body.fx .mb-c svg{animation:cue 1.7s ease-in-out infinite}
-
+/* ---------- v0.20: ארוחות מתכווצות ---------- */
 .slot-h{height:56px;padding:0 6px 0 14px}
 .sl-t{display:flex;align-items:center;gap:8px;flex:1;min-width:0;height:100%;text-align:right;font-size:16px}
 .sl-n{font-weight:500}
@@ -959,3 +937,31 @@ body.fx .mb-c svg{animation:cue 1.7s ease-in-out infinite}
 .ent2 .ekc b{font-size:17px;font-weight:600}
 .ent2 .emac{margin-top:3px;gap:12px}
 .emac i.mp,.emac i.mc2,.emac i.mf{background:none;padding:0;font-size:12px}
+
+/* ---------- v0.21: מבט מהיר (וילון) ומצב רגיל ---------- */
+@keyframes rise2{from{opacity:0;transform:translateY(18px) scale(.975)}to{opacity:1;transform:none}}
+@keyframes cue{0%,100%{transform:translateY(2px)}50%{transform:translateY(-3px)}}
+body.fx .screen.rv1>*{animation-name:rise2}
+.dock{transition:transform .55s var(--ease),opacity .35s,visibility 0s}
+.dock.hide{transform:translateY(160%);opacity:0;visibility:hidden;pointer-events:none;transition:transform .45s var(--ease),opacity .25s,visibility 0s .45s}
+.glance{position:absolute;inset:0;z-index:55;display:flex;flex-direction:column;padding:calc(var(--st) + 14px) 20px calc(max(16px,var(--sb)) + 8px);touch-action:none;
+  background:radial-gradient(circle at 92% -6%,rgba(92,225,168,.2),transparent 42%),radial-gradient(circle at -12% 96%,rgba(90,130,255,.17),transparent 46%),#000;
+  transform:translateY(calc(var(--gd,0px)*-1));transition:transform .55s var(--ease),opacity .3s}
+.glance.drag{transition:none}
+.glance.off{transform:translateY(-104%);visibility:hidden;transition:transform .55s var(--ease),visibility 0s .55s}
+.glance.hid{opacity:0;visibility:hidden;transform:none;transition:opacity .25s,visibility 0s .25s}
+.glance .hd{margin-bottom:0}
+.gl-mid{flex:1;min-height:0;display:flex;flex-direction:column;justify-content:center;gap:14px}
+.gl-mid .mini{margin-top:0}
+.hero.v{flex-direction:column;gap:14px;padding:20px 18px 18px;text-align:center}
+.hero.v .big{font-size:50px}
+.hero.v .st{display:flex;width:100%;justify-content:space-around}
+.hero.v .st>div{margin-bottom:0}
+.gl-add{height:56px;font-size:17px;border-radius:28px;margin-top:2px}
+.gl-add svg{width:22px;height:22px}
+.gl-pull{display:flex;flex-direction:column;align-items:center;gap:2px;padding:6px 0 0;color:var(--mu)}
+.gl-pull .mb-h{display:block;width:38px;height:5px;border-radius:3px;background:rgba(255,255,255,.3);margin-bottom:6px}
+.gl-pull svg{width:20px;height:20px;color:var(--accent)}
+.gl-pull small{font-size:12px}
+body.fx .gl-pull svg{animation:cue 1.7s ease-in-out infinite}
+@media (max-height:720px){.glance .streak{display:none}.gl-mid{gap:10px}}

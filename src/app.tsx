@@ -18,8 +18,15 @@ import { todayKey } from './core/dates';
 export function App() {
   // כשחוזרים לאפליקציה אחרי זמן: מרעננים את "היום" ומוודאים שיש אימונים מתוזמנים קדימה
   useEffect(() => {
+    let hiddenAt = 0;
     const onVisible = () => {
-      if (document.visibilityState !== 'visible') return;
+      if (document.visibilityState !== 'visible') { hiddenAt = Date.now(); return; }
+      // חזרה אחרי כמה דקות: שוב מבט מהיר, כמו בכניסה לאפליקציה
+      if (hiddenAt && Date.now() - hiddenAt > 3 * 60_000) {
+        const c = ui.get();
+        if (!c.addOpen && !c.settingsOpen) setUi({ glance: true, tab: 'today' });
+      }
+      hiddenAt = 0;
       const reset = store.get().settings.resetHour;
       const t = todayKey(reset);
       const cur = ui.get();
