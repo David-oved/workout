@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
-import { Check, Undo2, Globe, Brain, FileText, Trash } from 'lucide-preact';
-import { chat, pendingProducts, retryLast, undoAdd } from '../ai/chat';
+import { Check, Undo2, Globe, Brain, FileText, X } from 'lucide-preact';
+import { chat, confirmMemory, dismissMemory, pendingProducts, retryLast, undoAdd } from '../ai/chat';
 import { ProductCard } from './ProductCard';
 import { Md } from './AiChat';
 
@@ -85,7 +85,7 @@ export function Messages({ onSuggest }: { onSuggest: (t: string) => void }) {
               <div class="srcs">{m.sources.map((s) => <a class="src" href={s.uri} target="_blank" rel="noopener"><Globe />{s.title}</a>)}</div>
             ) : null}
             {m.webFailed && <div class="mu" style={{ fontSize: 12, margin: '0 6px' }}>החיפוש באינטרנט לא זמין כרגע, אז זו תשובה בלי מקורות.</div>}
-            {m.removed?.length ? <div class="remb del">{m.removed.map((r) => <span><Trash />נמחק מהיום: {r}</span>)}</div> : null}
+            {m.memoryAsk?.length ? <div class="remb ask">{m.memoryAsk.map((r) => <span key={r}><Brain />לזכור: {r}<button onClick={() => confirmMemory(m.id, r)}>שמור</button><button class="nx" aria-label="לא" onClick={() => dismissMemory(m.id, r)}><X /></button></span>)}</div> : null}
             {m.remembered?.length ? <div class="remb">{m.remembered.map((r) => <span><Brain />נשמר בזיכרון: {r}</span>)}</div> : null}
             {m.meta && (
               <details class="mtr">
@@ -103,7 +103,6 @@ export function Messages({ onSuggest }: { onSuggest: (t: string) => void }) {
                 <div class="mu num" style={{ marginTop: 6 }}>{m.items?.map((i) => `${i.name} ${i.grams} ג׳`).join(' · ')}</div>
               </div>
             )}
-            {m.card === 'removed' && <div class="mu" style={{ fontSize: 12, margin: '4px 6px' }}>הארוחה נמחקה מהיום</div>}
             {m.card === 'old' && <div class="mu" style={{ fontSize: 12, margin: '4px 6px' }}>הארוחה עודכנה בהודעה הבאה</div>}
           </div>
         </div>

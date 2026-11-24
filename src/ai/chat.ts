@@ -24,8 +24,8 @@ export interface Msg {
   fileNames?: string[]; // קבצי PDF שצורפו להודעה
   sent?: AiItem[]; // מה שה-AI החזיר (להיסטוריית השיחה)
   items?: AiItem[]; // הכרטיס הנוכחי (ניתן לעריכה)
-  card?: 'draft' | 'added' | 'old' | 'removed';
-  removed?: string[]; // מנות שה-AI מחק מהיום לבקשתך
+  card?: 'draft' | 'added' | 'old';
+  memoryAsk?: string[]; // דברים שה-AI מציע לזכור עליך, מחכים לאישור
   edited?: boolean;
   addedIds?: string[];
   addedLabel?: string;
@@ -120,7 +120,7 @@ function buildTurns(msgs: Msg[], lib: Lib, hints: string): ChatTurn[] {
       const note = !files && (m.images?.length || m.fileNames?.length) ? ' (צורף קובץ קודם)' : '';
       return { role: 'user', text: m.text + note + (m.hint ? `\n\n${m.hint}` : ''), images: files };
     }
-    const items = m.card === 'added' || m.card === 'removed' ? [] : (m.items ?? m.sent ?? []);
+    const items = m.card === 'added' ? [] : (m.items ?? m.sent ?? []);
     const prods = (m.products ?? []).filter((p) => p.status === 'pending').map(({ id: _i, status: _s, ...p }) => p);
     return { role: 'model', text: JSON.stringify({ reply: m.text, items: items.map(stripId), ...(prods.length ? { products: prods } : {}) }) };
   });
@@ -149,6 +149,20 @@ function buildTurns(msgs: Msg[], lib: Lib, hints: string): ChatTurn[] {
   }
   return turns;
 }
+
+/** הצעות לזיכרון שעוד לא שמורות */
+function newMemory(notes: string[]): string[] {
+  const have = store.get().settings.ai.memory.map((x) => x.toLowerCase());
+  return [...new Set(notes)].filter((n) => !have.includes(n.toLowerCase()));
+}
+
+/** המשתמש אישר: שומרים את ההצעה בזיכרון */
+export function confirmMemory(msgId: string, note: string) {
+  const added = saveMemory([note]);
+  patchMsg(msgId, (m) => ({ ...m, memoryAsk: (m.memoryAsk ?? []).filter((x) => x !== note), remembered: added.length ? [...(m.remembered ?? []), ...added] : m.remembered }));
+}
+export const dismissMemory = (msgId: string, note: string) =>
+  patchMsg(msgId, (m) => ({ ...m, memoryAsk: (m.memoryAsk ?? []).filter((x) => x !== note) }));
 
 function saveMemory(notes: string[]): string[] {
   if (!notes.length) return [];
@@ -229,14 +243,7 @@ async function runTurn() {
     // ה-AI חזר עם אותה ארוחה שכבר נוספה? לא פותחים כרטיס כפול
     const lastCard = [...chat.get().messages].reverse().find((m) => m.card === 'added' || m.card === 'draft');
     if (lastCard?.card === 'added' && res.items.length && sameMeal(res.items, lastCard.items ?? [])) res = { ...res, items: [] };
-    // מחיקת רשומות מהיום לבקשת המשתמש (עם ביטול)
-    const rmIds = (res.remove ?? []).filter((id) => store.get().entries.some((e) => e.id === id));
-    const gone = store.get().entries.filter((e) => rmIds.includes(e.id));
-    if (gone.length) {
-      actions.removeEntries(rmIds);
-      toast(`נמחקו ${gone.length} מנות מהיום`, () => { gone.forEach((e) => actions.addEntry(e)); });
-    }
-    const remembered = saveMemory(res.memory);
+    const memoryAsk = newMemory(res.memory); // רק הצעה: נשמר אחרי לחיצה שלך
     clearStages();
     setChat((s) => {
       let msgs = [...s.messages];
@@ -248,13 +255,11 @@ async function runTurn() {
         sent: res.items,
         meta: { model: res.model, ms: res.ms, thinking: res.thinking, web: web && !res.webFailed, calls: res.calls, trace: res.trace },
         sources: res.sources.length ? res.sources : undefined,
-        remembered: remembered.length ? remembered : undefined,
+        memoryAsk: memoryAsk.length ? memoryAsk : undefined,
         suggestions: res.suggestions.length ? res.suggestions : undefined,
         webFailed: res.webFailed || undefined,
         products: res.products.length ? res.products.map((p) => ({ ...p, status: 'pending' as const })) : undefined,
-        removed: gone.length ? gone.map((e) => e.name) : undefined,
       };
-      if (rmIds.length) msgs = msgs.map((m) => (m.addedIds?.some((id) => rmIds.includes(id)) ? { ...m, card: 'removed' as const, addedIds: undefined } : m));
       if (res.items.length) {
         const prev = msgs.map((m, i) => [m, i] as const).reverse().find(([m]) => m.card === 'draft');
         if (prev) msgs[prev[1]] = { ...prev[0], items: undefined, card: 'old' };

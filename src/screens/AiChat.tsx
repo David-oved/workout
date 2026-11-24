@@ -7,7 +7,7 @@ import { FullScreen } from '../ui/components';
 import { aiState, saveAiKey } from '../ai/gemini';
 import { fileToAttachment } from '../ai/image';
 import { itemMacros } from '../ai/pure';
-import { addCardToDay, cardTotals, chat, removeItem, resetChat, retryLast, sendMessage, setDeep, setGrams, setWeb, undoAdd, type Attachment, type Msg } from '../ai/chat';
+import { addCardToDay, cardTotals, chat, confirmMemory, dismissMemory, removeItem, resetChat, retryLast, sendMessage, setDeep, setGrams, setWeb, undoAdd, type Attachment, type Msg } from '../ai/chat';
 
 const SUGGEST = [
   'אכלתי חצי פיתה עם שניצל ושתי כפות חומוס',
@@ -216,6 +216,7 @@ export function AiChat() {
                 <div class="srcs">{m.sources.map((s) => <a class="src" href={s.uri} target="_blank" rel="noopener"><Globe />{s.title}</a>)}</div>
               ) : null}
               {m.webFailed && <div class="mu" style={{ fontSize: 12, margin: '0 6px' }}>החיפוש באינטרנט לא זמין כרגע, אז זו תשובה בלי מקורות.</div>}
+              {m.memoryAsk?.length ? <div class="remb ask">{m.memoryAsk.map((r) => <span key={r}><Brain />לזכור: {r}<button onClick={() => confirmMemory(m.id, r)}>שמור</button><button class="nx" aria-label="לא" onClick={() => dismissMemory(m.id, r)}><X /></button></span>)}</div> : null}
               {m.remembered?.length ? <div class="remb">{m.remembered.map((r) => <span><Brain />נשמר בזיכרון: {r}</span>)}</div> : null}
               {m.meta && (
                 <details class="mtr">

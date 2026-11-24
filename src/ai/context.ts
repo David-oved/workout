@@ -19,11 +19,6 @@ export function buildAppData(date: string): string {
   out.push(`date ${date} (${DAY_NAMES[dow(date)]}); location ${info.place === 'dorm' ? 'dorm' : 'home'}; training ${info.training ? 'yes' : 'no'}.`);
   out.push(`eaten: ${info.eaten.k} kcal, protein ${info.eaten.p}g, carbs ${info.eaten.c}g, fat ${info.eaten.f}g. Targets today: ${info.target.k} kcal, protein ${info.target.p}g, carbs ${info.target.c}g, fat ${info.target.f}g.`);
 
-  if (info.entries.length) {
-    out.push(`[ENTRIES LOGGED ON ${date}] (id | meal | name | kcal | protein)`);
-    for (const e of info.entries.slice(0, 40)) out.push(`- ${e.id} | ${s.settings.slots.find((x) => x.id === e.slot)?.name ?? e.slot} | ${e.name} | ${Math.round(e.k)} | ${Math.round(e.p)}g`);
-  }
-
   if (ai.shareData) {
     const p = s.settings.profile;
     const w = s.weights;

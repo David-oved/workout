@@ -1082,3 +1082,9 @@ body.fx .as-tray.dock{animation:slideUp .5s var(--spring) backwards}
 .as-tray.dock .as-th svg{grid-column:2;grid-row:1/3}
 .comp-opts{margin:0 0 6px}
 .ct-t b{white-space:nowrap}
+
+/* ---------- v0.25.2: ה-AI מציע, אתה מאשר ---------- */
+.remb.ask span{display:inline-flex;align-items:center;gap:8px}
+.remb.ask button{height:28px;padding:0 12px;border-radius:14px;background:var(--accent);color:var(--accent-d);font-size:12.5px;font-weight:600}
+.remb.ask button.nx{width:28px;padding:0;background:rgba(255,255,255,.1);color:var(--tx);display:inline-flex;align-items:center;justify-content:center}
+.remb.ask button.nx svg{width:13px;height:13px}
