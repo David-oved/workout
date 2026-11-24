@@ -1,3 +1,4 @@
+import { get } from 'idb-keyval';
 import { store } from '../core/state';
 import { actions } from '../core/actions';
 import { todayKey, uid } from '../core/dates';
@@ -6,6 +7,7 @@ import { loadDb } from '../data/foodDb';
 import { aiState, chatTurn } from '../ai/gemini';
 import { buildAppData } from '../ai/context';
 import { foodHints, nowBlock } from '../ai/hints';
+import { sendMessage } from '../ai/chat';
 import { macrosOf, makeEntries, tray, trayAddDish, trayAddFood, trayClear, type TItem } from '../ui/tray';
 import { guessSlot, openAdd, toast } from '../ui/ui';
 import type { InboxCard, InboxItem } from '../core/types';
@@ -36,12 +38,51 @@ function cardOf(items: TItem[], src: 'db' | 'ai'): InboxCard {
 
 const patch = (id: string, p: Partial<InboxItem>) => actions.patchInbox(id, p);
 
+const trayOf = (list: Awaited<ReturnType<typeof chatTurn>>['items']): TItem[] =>
+  list.map((i) => ({
+    id: uid(), name: i.name, unit: 'g', amount: i.grams, step: 10, base: 100,
+    per: { k: i.kcal100, p: i.p100, c: i.c100, f: i.f100 }, est: i.source === 'estimate', src: 'm',
+    unitG: i.unitGrams, portions: i.unitGrams ? [{ l: 'יחידה', g: i.unitGrams }] : undefined,
+  }));
+
+const PHOTO_HINT = '[PHOTO FROM SHORTCUT] He sent this photo from an iPhone shortcut, and may have added a short note. The photo shows what he ate, or a food package, or a nutrition label. Use his note as extra information (what it is, quantities, brand). Return one meal card in "items" as usual (source "label" when a nutrition label is readable). If you cannot tell what is in the photo, return no items and say in "reply" what you need (one short sentence).';
+
+/** תמונה (מקיצור): ה-AI מנתח את התמונה יחד עם הטקסט שהוספת, ומכין כרטיס אחד מוכן */
+async function prepareImage(it: InboxItem) {
+  const img = await get<{ data: string; mime: string }>('wo:inbox-img:' + it.id).catch(() => undefined);
+  if (!img) { patch(it.id, { status: 'fail', failWhy: 'התמונה לא נשמרה במכשיר, אפשר לשלוח שוב' }); return; }
+  if (!aiState.get().configured) { patch(it.id, { status: 'fail', failWhy: 'ניתוח תמונה דורש חיבור AI (הגדרות ← AI תזונה)' }); return; }
+  const today = todayKey(store.get().settings.resetHour);
+  const hints = it.text ? await foodHints(it.text).catch(() => '') : '';
+  const ask = it.text || 'זו תמונה של מה שאכלתי. זהה מה יש בה והערך כמויות.';
+  const text = `${ask}
+
+${PHOTO_HINT}${hints ? `
+
+${hints}` : ''}
+
+${nowBlock()}
+
+${buildAppData(today)}`;
+  try {
+    const res = await chatTurn([{ role: 'user', text, images: [img] }], {});
+    if (res.items.length) {
+      patch(it.id, { status: 'ready', card: { ...cardOf(trayOf(res.items), 'ai'), note: res.reply } });
+      return;
+    }
+    patch(it.id, { status: 'fail', failWhy: res.reply || 'לא הצלחתי לזהות מה בתמונה' });
+  } catch (e) {
+    patch(it.id, { status: 'fail', failWhy: (e as Error).message || 'הניתוח נכשל' });
+  }
+}
+
 export async function prepareInbox(it: InboxItem) {
   if (running.has(it.id)) return;
   running.add(it.id);
   try {
     patch(it.id, { status: 'busy' });
     await loadDb().catch(() => undefined);
+    if (it.hasImg) { await prepareImage(it); return; }
     // 1. עם AI מחובר: הוא מנתח בלי שיחה, כרטיס אחד מוכן (מדויק יותר מהחיפוש במאגר)
     if (aiState.get().configured) {
       try {
@@ -56,11 +97,7 @@ ${nowBlock()}
 ${buildAppData(today)}`;
         const res = await chatTurn([{ role: 'user', text }], {});
         if (res.items.length) {
-          const items: TItem[] = res.items.map((i) => ({
-            id: uid(), name: i.name, unit: 'g', amount: i.grams, step: 10, base: 100,
-            per: { k: i.kcal100, p: i.p100, c: i.c100, f: i.f100 }, est: i.source === 'estimate', src: 'm',
-            unitG: i.unitGrams, portions: i.unitGrams ? [{ l: 'יחידה', g: i.unitGrams }] : undefined,
-          }));
+          const items = trayOf(res.items);
           patch(it.id, { status: 'ready', card: { ...cardOf(items, 'ai'), note: res.reply } });
           return;
         }
@@ -116,4 +153,13 @@ export function editInbox(it: InboxItem, date: string) {
   actions.dismissInbox(it.id);
   if (it.card) openAdd(undefined, date, null, undefined, it.card.items);
   else openAdd(undefined, date, null, it.text);
+}
+
+/** כשהניתוח האוטומטי של תמונה לא הצליח: פותח את הצ'אט ושולח אליו את אותה תמונה, כדי לדייק יחד */
+export async function chatInbox(it: InboxItem, date: string) {
+  const img = await get<{ data: string; mime: string }>('wo:inbox-img:' + it.id).catch(() => undefined);
+  actions.dismissInbox(it.id);
+  openAdd(undefined, date, 'chat');
+  if (!aiState.get().configured) return;
+  void sendMessage(it.text || 'זו תמונה של מה שאכלתי. מה יש בה?', img ? [{ data: img.data, mime: img.mime, url: `data:${img.mime};base64,${img.data}` }] : []);
 }

@@ -4,6 +4,9 @@ import { PUSH_URL } from '../push/config';
 import { toast } from '../ui/ui';
 import { store } from '../core/state';
 import { prepareInbox } from './prepare';
+import { set } from 'idb-keyval';
+import { fileToJpeg } from '../ai/image';
+import type { InboxItem } from '../core/types';
 
 /**
  * Siri / אפליקציית קיצורים: הקיצור שולח טקסט מוכתב ל-Worker, והאפליקציה מושכת אותו ומציגה כרטיס לאישור.
@@ -22,6 +25,7 @@ const newToken = () => {
 export const siri = createStore({ on: !!get(), busy: false, msg: '' });
 
 export const siriUrl = () => `${PUSH_URL}/siri/${get() ?? ''}/add`;
+export const photoUrl = () => `${PUSH_URL}/siri/${get() ?? ''}/photo`;
 const base = () => `${PUSH_URL}/siri/${get() ?? ''}`;
 
 export function enableSiri() {
@@ -58,8 +62,23 @@ export async function syncInbox() {
   try {
     const r = await fetch(`${base()}/list`, { cache: 'no-store' });
     if (!r.ok) return;
-    const j = (await r.json()) as { items?: { id: string; text: string; ts: number }[] };
-    const items = (j.items ?? []).filter((x) => x && typeof x.id === 'string' && typeof x.text === 'string');
+    const j = (await r.json()) as { items?: { id: string; text: string; ts: number; img?: string }[] };
+    const raw = (j.items ?? []).filter((x) => x && typeof x.id === 'string' && typeof x.text === 'string');
+    if (!raw.length) return;
+    // תמונות: מורידים, מכווצים ושומרים במכשיר (בנפרד מהנתונים), ורק אז מאשרים. תמונה שלא ירדה תנסה שוב בפעם הבאה
+    const items: InboxItem[] = [];
+    for (const x of raw) {
+      if (!x.img) { items.push({ id: x.id, text: x.text, ts: x.ts }); continue; }
+      try {
+        const ir = await fetch(`${base()}/img/${x.id}`, { cache: 'no-store' });
+        if (!ir.ok) throw new Error(String(ir.status));
+        const blob = await ir.blob();
+        const file = new File([blob], 'siri.jpg', { type: x.img });
+        const [full, thumb] = await Promise.all([fileToJpeg(file, 1280), fileToJpeg(file, 140)]);
+        await set('wo:inbox-img:' + x.id, { data: full.data, mime: full.mime });
+        items.push({ id: x.id, text: x.text, ts: x.ts, hasImg: true, thumb: thumb.url });
+      } catch { /* נשאר בשרת ויורד בפעם הבאה */ }
+    }
     if (!items.length) return;
     actions.addInbox(items);
     for (const it of items) { const cur = store.get().inbox.find((x) => x.id === it.id); if (cur && !cur.status) void prepareInbox(cur); }

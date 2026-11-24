@@ -1119,3 +1119,7 @@ body.fx .as-tray.dock{animation:slideUp .5s var(--spring) backwards}
 .am-i svg{width:20px;height:20px;flex:none;opacity:.8}
 .am-i.ai svg{color:var(--accent);opacity:1}
 .am-i:active{background:rgba(255,255,255,.09)}
+
+/* תמונה מקיצור */
+.sr-th{width:34px;height:34px;border-radius:9px;object-fit:cover;flex:none;border:.5px solid rgba(255,255,255,.18)}
+.sr-h b+.x{margin-inline-start:auto}

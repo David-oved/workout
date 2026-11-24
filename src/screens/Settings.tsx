@@ -18,7 +18,7 @@ import { feedState, feedUrl, webcalUrl, hasToken, verifyToken, saveToken, enable
 import { FullScreen, Sheet } from '../ui/components';
 import { exportBackup, importBackup } from '../core/backup';
 import { clearLog, fmtSnap, readLog, snapshot } from '../viewportLog';
-import { siri, enableSiri, disableSiri, rotateSiri, siriUrl, testSiri } from '../siri/siri';
+import { siri, enableSiri, disableSiri, rotateSiri, siriUrl, photoUrl, testSiri } from '../siri/siri';
 import { APP_VERSION, BUILD_ID, updater, checkForUpdate, applyUpdate } from '../update/updater';
 import type { Macros, Profile, TargetKey } from '../core/types';
 
@@ -262,6 +262,20 @@ function SettingsBody() {
                     <li>תן לקיצור שם, למשל <b>״רשום ארוחה״</b>. עכשיו אפשר: ״היי Siri, רשום ארוחה״.</li>
                   </ol>
                   <div class="mu" style={{ marginTop: 10, fontSize: 12.5, lineHeight: 1.6 }}>אם Siri שלך לא מוגדרת לעברית, תן לקיצור שם באנגלית (למשל Log meal). באייפון עם כפתור פעולה: הגדרות ← כפתור פעולה ← קיצור ← הקיצור הזה, ואז לחיצה על הכפתור פותחת הכתבה מיד.</div>
+                </div>
+                <div class="sec"><span>רישום ארוחה מתמונה</span></div>
+                <div class="g card" style={{ lineHeight: 1.7, fontSize: 14 }}>
+                  <div class="mu" style={{ fontSize: 13, marginBottom: 8 }}>קיצור נוסף: מצלמים או בוחרים תמונה, מוסיפים הערה אם רוצים, וה-AI מכין כרטיס ארוחה. דורש חיבור AI.</div>
+                  <pre class="adet" style={{ direction: 'ltr', textAlign: 'left', whiteSpace: 'pre-wrap', wordBreak: 'break-all', fontSize: 11.5, margin: 0 }}>{photoUrl()}</pre>
+                  <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
+                    <button class="btn primary sm" onClick={async () => { try { await navigator.clipboard.writeText(photoUrl()); toast('הכתובת הועתקה'); } catch { toast('ההעתקה נכשלה'); } }}>העתק כתובת לתמונות</button>
+                  </div>
+                  <ol style={{ margin: '12px 0 0', paddingInlineStart: 20 }}>
+                    <li><b>״בחר מתפריט״</b> עם שתי אפשרויות: ״מצלמה״ (פעולה <b>״צלם תמונה״</b>) ו״גלריה״ (פעולה <b>״בחר תמונות״</b>, בלי בחירה מרובה).</li>
+                    <li><b>״בקש קלט״</b> מסוג טקסט, עם ההנחיה ״רוצה להוסיף הערה? (אפשר לדלג)״. כאן מקלידים או מכתיבים מהמקלדת, וזה עובד גם בעברית.</li>
+                    <li><b>״המר תמונה״</b> ל-JPEG, ואחריה <b>״שנה גודל של תמונה״</b> לרוחב 1280.</li>
+                    <li><b>״קבל תוכן של כתובת URL״</b> עם הכתובת לתמונות: שיטה <b>POST</b>, גוף הבקשה <b>טופס</b>. שדה קובץ בשם <b>image</b> = התמונה, ושדה טקסט בשם <b>text</b> = הקלט מהשלב השני.</li>
+                  </ol>
                 </div>
                 <div class="note">הטקסט עובר דרך ה-Worker שלך ב-Cloudflare ונשמר שם עד שהאפליקציה מושכת אותו (לכל היותר 14 יום). הכתובת היא סוד: מי שיש לו אותה יכול לשלוח לך ארוחות, ולכן היא נשמרת רק במכשיר ולא בגיבוי.</div>
               </>

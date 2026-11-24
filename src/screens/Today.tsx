@@ -3,7 +3,7 @@ import { Sparkles, Bell, Mic, X, Droplets, ListChecks, Minus, Settings as Cog, C
 import { CountNum } from '../ui/anim';
 import { burst, rain, confetti, floatText } from '../ui/fx';
 import { streakOf } from '../core/streak';
-import { logInbox, editInbox } from '../siri/prepare';
+import { logInbox, editInbox, chatInbox } from '../siri/prepare';
 import { buildCandidates, candMacros, gapSuggestions, makeEntries, tray, trayAdd, trayClear, type Cand } from '../ui/tray';
 import { EventList } from '../ui/EventList';
 import { bridge, refreshEvents, syncWorkouts } from '../core/bridge';
@@ -101,9 +101,9 @@ function SiriCard({ date }: { date: string }) {
   return (
     <div class="g siric col">
       <div class="sr-h">
-        <Mic />
-        <b>מ-Siri{items.length > 1 ? ` · עוד ${items.length - 1}` : ''}</b>
-        <span class="sr-q">״{it.text}״</span>
+        {it.thumb ? <img class="sr-th" src={it.thumb} alt="" /> : <Mic />}
+        <b>{it.hasImg ? 'תמונה' : 'מ-Siri'}{items.length > 1 ? ` · עוד ${items.length - 1}` : ''}</b>
+        {it.text && <span class="sr-q">״{it.text}״</span>}
         <button class="x" aria-label="הסר" onClick={() => actions.dismissInbox(it.id)}><X /></button>
       </div>
       {(!it.status || it.status === 'busy') && <div class="sr-busy"><RefreshCw class="spin" />מכין את הכרטיס…</div>}
@@ -122,8 +122,12 @@ function SiriCard({ date }: { date: string }) {
       )}
       {it.status === 'fail' && (
         <>
-          <div class="mu" style={{ fontSize: 13 }}>לא הצלחתי להבין לבד, אפשר לפתוח בהוספה.</div>
-          <div class="sr-a"><button class="btn primary sm" onClick={() => editInbox(it, date)}>פתח בהוספה</button></div>
+          <div class="mu" style={{ fontSize: 13, lineHeight: 1.5 }}>{it.failWhy ?? 'לא הצלחתי להבין לבד, אפשר לפתוח בהוספה.'}</div>
+          <div class="sr-a">
+            {it.hasImg
+              ? <button class="btn primary sm" onClick={() => void chatInbox(it, date)}>דבר על זה בצ׳אט</button>
+              : <button class="btn primary sm" onClick={() => editInbox(it, date)}>פתח בהוספה</button>}
+          </div>
         </>
       )}
     </div>

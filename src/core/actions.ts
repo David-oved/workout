@@ -1,3 +1,4 @@
+import { del } from 'idb-keyval';
 import { update } from './state';
 import type { Plan, Session, Dish, Entry, Food, FoodEdit, CustomFood, Routine, Settings, Workout, WorkoutStatus, InboxItem } from './types';
 import { addDays, todayKey, uid } from './dates';
@@ -128,6 +129,7 @@ export const actions = {
     });
   },
   dismissInbox(id: string) {
+    void del('wo:inbox-img:' + id).catch(() => undefined);
     update((s) => ({ ...s, inbox: s.inbox.filter((x) => x.id !== id) }));
   },
   saveSettings(patch: Partial<Settings>) {

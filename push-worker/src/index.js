@@ -67,30 +67,67 @@ const loadInbox = async (env, t) => { try { const s = await env.SUBS.get(inboxKe
  * תיבת דואר ל-Siri / אפליקציית קיצורים: הקיצור שולח טקסט מוכתב ל-/siri/<token>/add, והאפליקציה מושכת אותו
  * מ-/list ומאשרת ב-/ack. ה-token הוא סוד אקראי של המשתמש (אין חשבונות). הטקסט נשמר עד 14 יום או עד שנמשך.
  */
+const MAX_IMG = 9 * 1024 * 1024;
+const imgKey = (t, id) => `img:${t}:${id}`;
+const fromB64 = (s) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0)).buffer;
+
 async function siri(req, env, url, token, action) {
-  if (action === 'add') {
+  // /add ו-/photo: טקסט, תמונה, או שניהם. תמונה מגיעה כקובץ בטופס (multipart), כגוף גולמי של תמונה, או כ-base64 ב-JSON
+  if (action === 'add' || action === 'photo') {
     let t = url.searchParams.get('t') ?? url.searchParams.get('text') ?? '';
+    let img = null; // { buf, mime }
     if (req.method === 'POST') {
       const ct = req.headers.get('Content-Type') || '';
-      if (ct.includes('multipart/form-data')) { const fd = await req.formData(); t = String(fd.get('text') ?? fd.get('t') ?? t); }
-      else {
+      if (ct.includes('multipart/form-data')) {
+        const fd = await req.formData();
+        t = String(fd.get('text') ?? fd.get('t') ?? t);
+        for (const [, v] of fd.entries()) {
+          if (v && typeof v === 'object' && typeof v.arrayBuffer === 'function') { img = { buf: await v.arrayBuffer(), mime: v.type || 'image/jpeg' }; break; }
+        }
+      } else if (ct.startsWith('image/')) {
+        img = { buf: await req.arrayBuffer(), mime: ct.split(';')[0] };
+      } else {
         const raw = await req.text();
-        if (ct.includes('json')) { try { const j = JSON.parse(raw); t = String(j.text ?? j.t ?? t); } catch { t = t || raw; } }
+        if (ct.includes('json')) {
+          try {
+            const j = JSON.parse(raw);
+            t = String(j.text ?? j.t ?? t);
+            const b64 = j.image ?? j.photo;
+            if (typeof b64 === 'string' && b64.length > 100) img = { buf: fromB64(b64.replace(/^data:[^,]*,/, '')), mime: String(j.mime ?? 'image/jpeg') };
+          } catch { t = t || raw; }
+        }
         else if (ct.includes('x-www-form-urlencoded')) { const p = new URLSearchParams(raw); t = p.get('text') ?? p.get('t') ?? t; }
         else t = t || raw;
       }
     }
     t = String(t).replace(/\s+/g, ' ').trim().slice(0, 400);
-    if (!t) return new Response('לא התקבל טקסט', { status: 400, headers: { ...TXT, ...cors(req) } });
+    if (img && img.buf.byteLength > MAX_IMG) return new Response('התמונה גדולה מדי', { status: 413, headers: { ...TXT, ...cors(req) } });
+    if (img && !String(img.mime).startsWith('image/')) img.mime = 'image/jpeg';
+    if (img && img.buf.byteLength < 200) img = null;
+    if (!t && !img) return new Response('לא התקבל טקסט או תמונה', { status: 400, headers: { ...TXT, ...cors(req) } });
     const list = await loadInbox(env, token);
-    list.push({ id: crypto.randomUUID().replace(/-/g, '').slice(0, 12), text: t, ts: Date.now() });
+    const id = crypto.randomUUID().replace(/-/g, '').slice(0, 12);
+    const item = { id, text: t, ts: Date.now() };
+    if (img) {
+      await env.SUBS.put(imgKey(token, id), img.buf, { expirationTtl: 14 * 86400 });
+      item.img = img.mime;
+    }
+    list.push(item);
     await env.SUBS.put(inboxKey(token), JSON.stringify(list.slice(-20)), { expirationTtl: 14 * 86400 });
-    return new Response('נרשם ✓', { headers: { ...TXT, ...cors(req) } });
+    return new Response(img ? 'התמונה נרשמה ✓' : 'נרשם ✓', { headers: { ...TXT, ...cors(req) } });
+  }
+  if (action.startsWith('img/')) {
+    const id = action.slice(4);
+    const it = (await loadInbox(env, token)).find((x) => x.id === id);
+    const buf = it?.img ? await env.SUBS.get(imgKey(token, id), 'arrayBuffer') : null;
+    if (!buf) return json(req, { ok: false, error: 'no image' }, 404);
+    return new Response(buf, { headers: { 'Content-Type': it.img, 'Cache-Control': 'no-store', ...cors(req) } });
   }
   if (action === 'list') return json(req, { items: await loadInbox(env, token) });
   if (action === 'ack' && req.method === 'POST') {
     let ids = [];
     try { const b = await req.json(); ids = Array.isArray(b.ids) ? b.ids.map(String) : []; } catch { /* ignore */ }
+    for (const id of ids) { try { await env.SUBS.delete(imgKey(token, id)); } catch { /* ignore */ } }
     const left = (await loadInbox(env, token)).filter((x) => !ids.includes(x.id));
     if (left.length) await env.SUBS.put(inboxKey(token), JSON.stringify(left), { expirationTtl: 14 * 86400 });
     else await env.SUBS.delete(inboxKey(token));
@@ -102,7 +139,7 @@ async function siri(req, env, url, token, action) {
 async function handle(req, env) {
   const url = new URL(req.url);
   if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors(req) });
-  const sm = url.pathname.match(/^\/siri\/([A-Za-z0-9_-]{22,64})\/(add|list|ack)$/);
+  const sm = url.pathname.match(/^\/siri\/([A-Za-z0-9_-]{22,64})\/(add|photo|list|ack|img\/[a-f0-9]{12})$/);
   if (sm) return siri(req, env, url, sm[1], sm[2]);
 
   if (req.method === 'GET' && url.pathname === '/config') return json(req, { pub: env.VAPID_PUBLIC, v: 1 });
