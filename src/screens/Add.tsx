@@ -63,7 +63,6 @@ export function AddScreen() {
   const [propMsg, setPropMsg] = useState<string | null>(null);
   const inRef = useRef<HTMLInputElement>(null);
   const taRef = useRef<HTMLTextAreaElement>(null);
-  const [kb, setKb] = useState<{ top: number; h: number } | null>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -82,25 +81,6 @@ export function AddScreen() {
       setTimeout(() => { if (configured) submit(pre); else { goTiles(); setQ(pre); } }, 350);
     }
   }, [open]);
-
-  // כשהמקלדת פתוחה בשיחה: הגיליון תופס בדיוק את השטח הנראה, ושורת ההקלדה נשארת מעל המקלדת
-  useEffect(() => {
-    const vv = window.visualViewport;
-    if (!vv || !open || view !== 'chat') { setKb(null); return; }
-    const upd = () => {
-      const open2 = window.innerHeight - vv.height > 120;
-      setKb(open2 ? { top: Math.max(0, Math.round(vv.offsetTop)), h: Math.round(vv.height) } : null);
-    };
-    vv.addEventListener('resize', upd);
-    vv.addEventListener('scroll', upd);
-    upd();
-    return () => { vv.removeEventListener('resize', upd); vv.removeEventListener('scroll', upd); };
-  }, [open, view]);
-  useEffect(() => {
-    if (!kb) return;
-    setTrayOpen(false); // המגש מצטמצם כשהמקלדת פתוחה
-    setTimeout(() => { const b = bodyRef.current; if (b) b.scrollTo({ top: b.scrollHeight }); }, 60);
-  }, [!!kb, kb?.h]);
 
   const today = todayKey(s.settings.resetHour);
   const slotName = s.settings.slots.find((x) => x.id === slot)?.name ?? 'ארוחה';
@@ -343,8 +323,6 @@ export function AddScreen() {
   const showTray = all.length > 0;
   const tabInfo = TABS.find((t) => t.id === tab)!;
 
-  const kbStyle = kb ? { top: `calc(var(--st) + 14px + ${kb.top}px)`, bottom: 'auto', height: `calc(${kb.h}px - var(--st) - 14px)` } : undefined;
-
   const filesStrip = (files.length > 0 || fileBusy) ? (
     <div class="cmpi" style={{ paddingBottom: 10 }}>
       {files.map((f, idx) => (
@@ -381,6 +359,8 @@ export function AddScreen() {
         <button class="ic" aria-label="צרף תמונה או PDF" disabled={files.length >= 3} onClick={() => fileRef.current?.click()}><Paperclip /></button>
         <textarea ref={taRef} rows={1} value={q} placeholder={ch.messages.length ? 'תקן אותי או שאל משהו…' : 'ספר לי מה אכלת…'} enterkeyhint="send"
           onInput={(e) => { const el = e.target as HTMLTextAreaElement; setQ(el.value); el.style.height = 'auto'; el.style.height = Math.min(el.scrollHeight, 120) + 'px'; }}
+          onFocus={() => setTrayOpen(false)}
+          onBlur={() => setTimeout(() => window.scrollTo(0, 0), 60)}
           onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submit(); } }} />
         <button class={'ic go' + (q.trim() || files.length > 0 ? ' on' : '')} aria-label="שלח" disabled={!q.trim() && files.length === 0} onClick={() => submit()}><ArrowUp /></button>
       </div>
@@ -388,7 +368,7 @@ export function AddScreen() {
   );
 
   return (
-    <BigSheet open={open} onClose={close} style={kbStyle}>
+    <BigSheet open={open} onClose={close}>
       {view === 'chat' ? (
         <div class="as-top ctop">
           <button class="ct-back" aria-label="חזרה לחיפוש" onClick={goTiles}><ChevronRight /></button>
