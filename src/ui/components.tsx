@@ -57,12 +57,12 @@ export function FullScreen({ open, children }: { open: boolean; children: Compon
 }
 
 /** גיליון גדול למסך ההוספה: רקע מעומעם, והיום נשאר מתחתיו */
-export function BigSheet({ open, onClose, children }: { open: boolean; onClose: () => void; children: ComponentChildren }) {
+export function BigSheet({ open, onClose, children, style }: { open: boolean; onClose: () => void; children: ComponentChildren; style?: Record<string, string | number> }) {
   const show = useLinger(open);
   return (
     <>
       <div class={'bsb' + (open ? ' on' : '')} onClick={onClose} />
-      <div class={'bsh' + (open ? ' on' : '')} role="dialog" aria-modal="true">
+      <div class={'bsh' + (open ? ' on' : '')} role="dialog" aria-modal="true" style={style}>
         <div class="grab" />
         {show && children}
       </div>

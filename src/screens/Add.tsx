@@ -62,22 +62,45 @@ export function AddScreen() {
   const fileRef = useRef<HTMLInputElement>(null);
   const [propMsg, setPropMsg] = useState<string | null>(null);
   const inRef = useRef<HTMLInputElement>(null);
+  const taRef = useRef<HTMLTextAreaElement>(null);
+  const [kb, setKb] = useState<{ top: number; h: number } | null>(null);
 
   useEffect(() => {
     if (!open) return;
     trayClear();
     void loadDb();
     setPropMsg(null); setQ(''); setAlt({}); setFiles([]); setOpenRow(null); setSlotOpen(false); setMore(false); setSheet(null); setErr(''); setEditTiles(false); setTrayOpen(true);
-    setView(addView === 'chat' || draftOf(chat.get().messages) ? 'chat' : 'tiles');
+    const toChat = addView === 'chat' || !!draftOf(chat.get().messages);
+    setView(toChat ? 'chat' : 'tiles');
+    setTrayOpen(!toChat);
     // טקסט שהגיע מ-Siri: ה-AI מנתח אותו מיד, ובלי AI הוא נכנס לחיפוש החכם
     const trItems = ui.get().addTray;
     if (trItems?.length) { tray.set((s) => ({ ...s, items: trItems })); setUi({ addTray: null }); }
     const pre = ui.get().addText;
     if (pre) {
       setUi({ addText: null });
-      setTimeout(() => { if (configured) submit(pre); else { setView('tiles'); setQ(pre); } }, 350);
+      setTimeout(() => { if (configured) submit(pre); else { goTiles(); setQ(pre); } }, 350);
     }
   }, [open]);
+
+  // כשהמקלדת פתוחה בשיחה: הגיליון תופס בדיוק את השטח הנראה, ושורת ההקלדה נשארת מעל המקלדת
+  useEffect(() => {
+    const vv = window.visualViewport;
+    if (!vv || !open || view !== 'chat') { setKb(null); return; }
+    const upd = () => {
+      const open2 = window.innerHeight - vv.height > 120;
+      setKb(open2 ? { top: Math.max(0, Math.round(vv.offsetTop)), h: Math.round(vv.height) } : null);
+    };
+    vv.addEventListener('resize', upd);
+    vv.addEventListener('scroll', upd);
+    upd();
+    return () => { vv.removeEventListener('resize', upd); vv.removeEventListener('scroll', upd); };
+  }, [open, view]);
+  useEffect(() => {
+    if (!kb) return;
+    setTrayOpen(false); // המגש מצטמצם כשהמקלדת פתוחה
+    setTimeout(() => { const b = bodyRef.current; if (b) b.scrollTo({ top: b.scrollHeight }); }, 60);
+  }, [!!kb, kb?.h]);
 
   const today = todayKey(s.settings.resetHour);
   const slotName = s.settings.slots.find((x) => x.id === slot)?.name ?? 'ארוחה';
@@ -129,12 +152,17 @@ export function AddScreen() {
   };
   const addCand = (c: Cand) => trayAdd(c);
   const close = () => setUi({ addOpen: false });
+  const goChat = () => { setView('chat'); setTrayOpen(false); };
+  const goTiles = () => { setView('tiles'); setTrayOpen(true); };
   const scrollTop = () => { const b = bodyRef.current; if (b) b.scrollTo({ top: 0, behavior: 'smooth' }); };
 
   const submit = (override?: string) => {
     const t = (override ?? q).trim();
     if (!t && !files.length) return;
-    setView('chat');
+    goChat();
+    // אחרי שליחה המקלדת נסגרת, כדי לראות את התשובה
+    (document.activeElement as HTMLElement | null)?.blur?.();
+    if (taRef.current) taRef.current.style.height = 'auto';
     if (!configured) return;
     const fs = files;
     setQ(''); setFiles([]);
@@ -146,7 +174,7 @@ export function AddScreen() {
     setFileBusy(true);
     try {
       const out = await Promise.all(picked.slice(0, 2).map((f) => fileToAttachment(f)));
-      setView('chat');
+      goChat();
       void sendMessage('', out, { product: true });
     } catch (er) { toast((er as Error).message); }
     setFileBusy(false);
@@ -158,7 +186,7 @@ export function AddScreen() {
     try {
       const out = await Promise.all(take.map((f) => fileToAttachment(f)));
       setFiles((p) => [...p, ...out].slice(0, 3));
-      setView('chat');
+      goChat();
     } catch (er) { toast((er as Error).message); }
     setFileBusy(false);
   };
@@ -172,12 +200,12 @@ export function AddScreen() {
   /** שיחה חדשה / מחיקת השיחה: מיידי, ואפשר לבטל */
   const newChat = () => {
     const snap = chat.get().messages;
-    if (!snap.length) { setView('chat'); setTimeout(() => inRef.current?.focus(), 100); return; }
+    if (!snap.length) { goChat(); setTimeout(() => taRef.current?.focus(), 160); return; }
     resetChat();
     setQ(''); setFiles([]);
-    setView('chat');
+    goChat();
     toast('השיחה נמחקה', () => restoreChat(snap));
-    setTimeout(() => inRef.current?.focus(), 100);
+    setTimeout(() => taRef.current?.focus(), 160);
   };
 
   useEffect(() => {
@@ -190,7 +218,7 @@ export function AddScreen() {
   const setAmt = (it: TItem, v: number) => (it.src === 'ai' ? setGrams(it.msgId!, it.id, v) : traySet(it.id, v));
   const rm = (it: TItem) => (it.src === 'ai' ? removeItem(it.msgId!, it.id) : trayRemove(it.id));
   const clearAll = () => { trayClear(); aiItems.forEach((it) => removeItem(it.msgId!, it.id)); };
-  const addMore = () => { setView('tiles'); setQ(''); scrollTop(); setTimeout(() => inRef.current?.focus(), 150); };
+  const addMore = () => { goTiles(); setQ(''); scrollTop(); setTimeout(() => inRef.current?.focus(), 150); };
 
   const commit = () => {
     if (!all.length) return;
@@ -315,56 +343,87 @@ export function AddScreen() {
   const showTray = all.length > 0;
   const tabInfo = TABS.find((t) => t.id === tab)!;
 
+  const kbStyle = kb ? { top: `calc(var(--st) + 14px + ${kb.top}px)`, bottom: 'auto', height: `calc(${kb.h}px - var(--st) - 14px)` } : undefined;
+
+  const filesStrip = (files.length > 0 || fileBusy) ? (
+    <div class="cmpi" style={{ paddingBottom: 10 }}>
+      {files.map((f, idx) => (
+        <span class={'thumb' + (f.url ? '' : ' pdf')} key={idx}>
+          {f.url ? <img src={f.url} /> : <span class="pdfn">{f.name}</span>}
+          <button aria-label="הסר קובץ" onClick={() => setFiles((p) => p.filter((_, j) => j !== idx))}><X /></button>
+        </span>
+      ))}
+      {fileBusy && <span class="thumb ld" />}
+    </div>
+  ) : null;
+
+  /** תצוגת החיפוש: כמו שהייתה (עם האפשרות לשאול את ה-AI מהחיפוש) */
+  const searchBar = (
+    <div class="g as-in">
+      <Sparkles />
+      <input ref={inRef} value={q} placeholder="ספר ל-AI מה אכלת, או חפש מזון…" autocomplete="off" enterkeyhint="send"
+        onInput={(e) => setQ((e.target as HTMLInputElement).value)}
+        onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); submit(); } }} />
+      <button class="ic" aria-label="צרף תמונה או PDF" disabled={files.length >= 3} onClick={() => openCamera((f) => void addChatFiles(f))}><Camera /></button>
+      {(q.trim() || files.length > 0) && <button class="ic go" aria-label="שלח ל-AI" onClick={() => submit()}><ArrowUp /></button>}
+    </div>
+  );
+
+  /** שורת ההקלדה של השיחה: למטה, כמו בצ'אט רגיל */
+  const composer = (
+    <div class="comp">
+      {filesStrip}
+      <div class="comp-opts">
+        <button class={'tg' + (ch.web ? ' on' : '')} onClick={() => setWeb(!ch.web)}><Globe />אינטרנט</button>
+        <button class={'tg' + (ch.deep ? ' on' : '')} onClick={() => setDeep(!ch.deep)}><Brain />עמוק</button>
+      </div>
+      <div class="g comp-in">
+        <button class="ic" aria-label="צרף תמונה או PDF" disabled={files.length >= 3} onClick={() => fileRef.current?.click()}><Paperclip /></button>
+        <textarea ref={taRef} rows={1} value={q} placeholder={ch.messages.length ? 'תקן אותי או שאל משהו…' : 'ספר לי מה אכלת…'} enterkeyhint="send"
+          onInput={(e) => { const el = e.target as HTMLTextAreaElement; setQ(el.value); el.style.height = 'auto'; el.style.height = Math.min(el.scrollHeight, 120) + 'px'; }}
+          onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submit(); } }} />
+        <button class={'ic go' + (q.trim() || files.length > 0 ? ' on' : '')} aria-label="שלח" disabled={!q.trim() && files.length === 0} onClick={() => submit()}><ArrowUp /></button>
+      </div>
+    </div>
+  );
+
   return (
-    <BigSheet open={open} onClose={close}>
-      <div class="as-top">
-        <div>
-          <div class="as-ti">מה אכלת?</div>
-          <div class="as-su num">{dayLabel(date, today)} · נשארו {fmt(Math.max(0, remK))} קל׳ · {remP} גרם חלבון</div>
-        </div>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+    <BigSheet open={open} onClose={close} style={kbStyle}>
+      {view === 'chat' ? (
+        <div class="as-top ctop">
+          <button class="ct-back" aria-label="חזרה לחיפוש" onClick={goTiles}><ChevronRight /></button>
+          <div class="ct-t">
+            <b>שיחה עם AI</b>
+            <small class="num">{date !== today ? `${dayLabel(date, today)} · ` : ''}נשארו {fmt(Math.max(0, remK))} קל׳ · {remP} ח׳</small>
+          </div>
+          <button class="ct-back" aria-label="שיחה חדשה" onClick={newChat}><MessageSquarePlus /></button>
           <button class={'as-pill' + (slotOpen ? ' open' : '')} onClick={() => setSlotOpen((v) => !v)}>{slotName}<ChevronDown /></button>
           <button class="as-x" aria-label="סגור" onClick={close}><X /></button>
         </div>
-      </div>
+      ) : (
+        <div class="as-top">
+          <div>
+            <div class="as-ti">מה אכלת?</div>
+            <div class="as-su num">{dayLabel(date, today)} · נשארו {fmt(Math.max(0, remK))} קל׳ · {remP} גרם חלבון</div>
+          </div>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <button class={'as-pill' + (slotOpen ? ' open' : '')} onClick={() => setSlotOpen((v) => !v)}>{slotName}<ChevronDown /></button>
+            <button class="as-x" aria-label="סגור" onClick={close}><X /></button>
+          </div>
+        </div>
+      )}
       {slotOpen && (
         <div class="chips as-slots">
           {s.settings.slots.map((sl) => <button class={'chip' + (sl.id === slot ? ' on' : '')} onClick={() => { setUi({ addSlot: sl.id }); setSlotOpen(false); }}>{sl.name}</button>)}
         </div>
       )}
-
-      <div class="g as-in">
-        <Sparkles />
-        <input ref={inRef} value={q} placeholder={view === 'chat' ? (ch.messages.length ? 'תקן אותי או שאל משהו…' : 'ספר לי מה אכלת…') : 'ספר ל-AI מה אכלת, או חפש מזון…'} autocomplete="off" enterkeyhint="send"
-          onInput={(e) => setQ((e.target as HTMLInputElement).value)}
-          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); submit(); } }} />
-        <button class="ic" aria-label="צרף תמונה או PDF" disabled={files.length >= 3} onClick={() => (view === 'chat' ? fileRef.current?.click() : openCamera((f) => void addChatFiles(f)))}>{view === 'chat' ? <Paperclip /> : <Camera />}</button>
-        {(q.trim() || files.length > 0) && <button class="ic go" aria-label="שלח ל-AI" onClick={() => submit()}><ArrowUp /></button>}
-      </div>
-      {(files.length > 0 || fileBusy) && (
-        <div class="cmpi" style={{ paddingBottom: 10 }}>
-          {files.map((f, idx) => (
-            <span class={'thumb' + (f.url ? '' : ' pdf')} key={idx}>
-              {f.url ? <img src={f.url} /> : <span class="pdfn">{f.name}</span>}
-              <button aria-label="הסר קובץ" onClick={() => setFiles((p) => p.filter((_, j) => j !== idx))}><X /></button>
-            </span>
-          ))}
-          {fileBusy && <span class="thumb ld" />}
-        </div>
-      )}
+      {view !== 'chat' && searchBar}
+      {view !== 'chat' && filesStrip}
       <input ref={fileRef} type="file" accept="image/*,application/pdf" multiple style={{ display: 'none' }} onChange={onFiles} />
 
-      <div class="as-body" ref={bodyRef} style={{ paddingBottom: showTray ? (trayOpen ? 430 : 190) : 100 }}>
+      <div class={'as-body' + (view === 'chat' ? ' chat' : '')} ref={bodyRef} style={{ paddingBottom: view === 'chat' ? 8 : showTray ? (trayOpen ? 430 : 190) : 100 }}>
         {view === 'chat' ? (
           <>
-            <div class="as-chatbar">
-              <button class="as-back" onClick={() => setView('tiles')}><ChevronRight size={16} />חזרה</button>
-              <button class="as-new" onClick={newChat}><MessageSquarePlus />שיחה חדשה</button>
-            </div>
-            <div class="as-tgs row">
-              <button class={'tg' + (ch.web ? ' on' : '')} onClick={() => setWeb(!ch.web)}><Globe />אינטרנט</button>
-              <button class={'tg' + (ch.deep ? ' on' : '')} onClick={() => setDeep(!ch.deep)}><Brain />עמוק</button>
-            </div>
             {!configured && <AiSetup />}
             {configured && ch.messages.length === 0 && (
               <div class="aiempty" style={{ paddingTop: 8 }}>
@@ -454,11 +513,11 @@ export function AddScreen() {
             {ch.messages.length > 0 && (
               <div class="g as-live">
                 <Sparkles />
-                <button class="lv" onClick={() => setView('chat')}>
+                <button class="lv" onClick={() => goChat()}>
                   <b>שיחה פעילה עם ה-AI</b>
                   <small>{lastUser.slice(0, 40) || `${ch.messages.length} הודעות`}</small>
                 </button>
-                <button class="lb" onClick={() => setView('chat')}>המשך</button>
+                <button class="lb" onClick={() => goChat()}>המשך</button>
                 <button class="lb" onClick={newChat}>חדשה</button>
               </div>
             )}
@@ -532,10 +591,10 @@ export function AddScreen() {
       </div>
 
       {showTray && (
-        <div class="g as-tray">
+        <div class={'g as-tray' + (view === 'chat' ? ' dock' : '')}>
           <button class="as-th" onClick={() => setTrayOpen((v) => !v)}>
             <b>הארוחה שלך</b>
-            <span class="num">{all.length} {all.length === 1 ? 'רכיב' : 'רכיבים'} · {fmt(tot.k)} קל׳</span>
+            <span class="num">{all.length} {all.length === 1 ? 'רכיב' : 'רכיבים'} · {fmt(tot.k)} קל׳ · {tot.p} ח׳</span>
             <ChevronDown class={trayOpen ? '' : 'flip'} />
           </button>
           {trayOpen && (
@@ -607,10 +666,12 @@ export function AddScreen() {
             <span class="num"><span class="m1">{tot.p} ח׳</span> · <span class="m2">{tot.c} פ׳</span> · <span class="m3">{tot.f} ש׳</span></span>
           </div>
           <button class="as-cta" onClick={commit}>
-            {all.length >= 2 && trayS.one ? `הוסף ל${slotName} כארוחה אחת` : `הוסף ל${slotName}`}
+            {view !== 'chat' && all.length >= 2 && trayS.one ? `הוסף ל${slotName} כארוחה אחת` : `הוסף ל${slotName}`}
           </button>
         </div>
       )}
+
+      {view === 'chat' && composer}
 
       <Sheet open={!!propMsg && propPending.length > 0} onClose={() => { setPropMsg(null); close(); }}>
         <h3>שמירת מוצר חדש</h3>
