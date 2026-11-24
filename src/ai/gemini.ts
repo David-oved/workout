@@ -390,9 +390,9 @@ export async function chatTurn(turns: ChatTurn[], opts: ChatOpts = {}): Promise<
 
   const sources: Source[] = [];
   const seenQ = new Set<string>();
-  // אם אין שום תגובה זמן רב (25 שניות, ו-60 כשיש תמונות, חיפוש או חשיבה עמוקה) או שהזרם נעצר: שולחים שוב
-  const firstMs = strong ? 60_000 : 25_000;
-  const idleMs = 30_000;
+  // אם אין שום תגובה זמן רב (45 שניות, ו-90 כשיש תמונות, חיפוש או חשיבה עמוקה). תשובות רגילות של Gemini לוקחות גם 25-40 שניות או שהזרם נעצר: שולחים שוב
+  const firstMs = strong ? 90_000 : 45_000;
+  const idleMs = 40_000;
   const stream = async (model: string, v: V) => {
     const ctl = new AbortController();
     const to = setTimeout(() => ctl.abort(), 120_000);

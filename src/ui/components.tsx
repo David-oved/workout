@@ -1,5 +1,5 @@
 import type { ComponentChildren } from 'preact';
-import { useEffect, useRef, useState } from 'preact/hooks';
+import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { ChartColumn, CalendarDays, House, Plus, Sparkles, RefreshCw } from 'lucide-preact';
 import { ui, setUi, type Tab } from './ui';
 import { updater, applyUpdate, dismissUpdate, APP_VERSION } from '../update/updater';
@@ -38,13 +38,61 @@ export function Ring({ size, stroke, pct, color, track = 'rgba(255,255,255,.08)'
   );
 }
 
+/**
+ * הידית שבראש גיליון: החלקה ממנה למטה סוגרת את הגיליון (הוא עוקב אחרי האצבע, ואם לא מספיק רחוק חוזר למקומו).
+ * אזור המגע רחב וגבוה מהקו עצמו, כדי שיהיה קל לתפוס.
+ */
+function Grab({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const st = useRef({ on: false, y0: 0, t0: 0, dy: 0 });
+  const openRef = useRef(open);
+  openRef.current = open;
+  const sheet = () => ref.current?.parentElement as HTMLElement | null;
+  const clear = () => { const el = sheet(); if (el) { el.style.removeProperty('transform'); el.style.removeProperty('transition'); } };
+  // אחרי שהגיליון נסגר (ה-class התחלף), מנקים את ההזזה הידנית והמעבר ממשיך מהמקום שבו האצבע עזבה
+  useLayoutEffect(() => { if (!open) clear(); }, [open]);
+  const start = (e: TouchEvent) => {
+    const el = sheet();
+    if (!el) return;
+    st.current = { on: true, y0: e.touches[0].clientY, t0: Date.now(), dy: 0 };
+    el.style.transition = 'none';
+  };
+  const move = (e: TouchEvent) => {
+    const s = st.current;
+    const el = sheet();
+    if (!s.on || !el) return;
+    s.dy = Math.max(0, e.touches[0].clientY - s.y0);
+    el.style.transform = `translateY(${s.dy}px)`;
+  };
+  const end = () => {
+    const s = st.current;
+    const el = sheet();
+    if (!s.on || !el) return;
+    s.on = false;
+    el.style.removeProperty('transition');
+    const v = s.dy / Math.max(1, Date.now() - s.t0);
+    if (s.dy > 100 || (s.dy > 40 && v > 0.6)) {
+      onClose();
+      // גיליון שלא נסגר בפועל (למשל מסך היכרות): חוזר למקומו
+      setTimeout(() => { if (openRef.current) clear(); }, 200);
+    } else {
+      clear();
+    }
+  };
+  return (
+    <div class="grabz" ref={ref} onTouchStart={start as never} onTouchMove={move as never} onTouchEnd={end} onTouchCancel={end} aria-hidden="true">
+      <div class="grab" />
+    </div>
+  );
+}
+
 export function Sheet({ open, onClose, children }: { open: boolean; onClose: () => void; children: ComponentChildren }) {
   const show = useLinger(open);
   return (
     <>
       <div class={'bd' + (open ? ' on' : '')} onClick={onClose} />
       <div class={'g sheet' + (open ? ' on' : '')} role="dialog" aria-modal="true">
-        <div class="grab" />
+        <Grab open={open} onClose={onClose} />
         {show && children}
       </div>
     </>
@@ -63,7 +111,7 @@ export function BigSheet({ open, onClose, children, style }: { open: boolean; on
     <>
       <div class={'bsb' + (open ? ' on' : '')} onClick={onClose} />
       <div class={'bsh' + (open ? ' on' : '')} role="dialog" aria-modal="true" style={style}>
-        <div class="grab" />
+        <Grab open={open} onClose={onClose} />
         {show && children}
       </div>
     </>

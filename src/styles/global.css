@@ -1103,3 +1103,7 @@ body.fx .as-tray.dock{animation:slideUp .5s var(--spring) backwards}
 .stoppedrow{display:flex;align-items:center;gap:10px;margin:8px 6px;font-size:13px;color:var(--mu)}
 .comp-in .stopb{background:rgba(255,122,122,.2);color:var(--danger)}
 .comp-in .stopb svg{fill:currentColor}
+
+/* ---------- v0.27: ידית גיליון עם אזור מגע גדול, החלקה למטה סוגרת ---------- */
+.grabz{padding:12px 0 14px;margin:-12px 0 0;touch-action:none;position:relative;z-index:2}
+.grabz .grab{margin:0 auto}
