@@ -1088,3 +1088,18 @@ body.fx .as-tray.dock{animation:slideUp .5s var(--spring) backwards}
 .remb.ask button{height:28px;padding:0 12px;border-radius:14px;background:var(--accent);color:var(--accent-d);font-size:12.5px;font-weight:600}
 .remb.ask button.nx{width:28px;padding:0;background:rgba(255,255,255,.1);color:var(--tx);display:inline-flex;align-items:center;justify-content:center}
 .remb.ask button.nx svg{width:13px;height:13px}
+
+/* ---------- v0.26: סטטוס עשיר ועצירה ---------- */
+.busyrow{margin:8px 4px 4px}
+.busyrow .stage{margin:0 0 4px}
+.busy-info{display:flex;flex-wrap:wrap;gap:4px 10px;font-size:12px;color:var(--mu);margin:0 0 8px}
+.busy-info span+span::before{content:"·";margin-inline-end:10px;color:var(--mu2)}
+.busy-info .slowtag{flex-basis:100%;color:var(--warn)}
+.busy-info .slowtag::before{content:none}
+.busy-act{display:flex;gap:8px}
+.busy-act button,.stoppedrow button{display:inline-flex;align-items:center;gap:6px;height:34px;padding:0 14px;border-radius:17px;background:rgba(255,255,255,.1);font-size:13.5px}
+.busy-act button svg,.stoppedrow button svg{width:14px;height:14px}
+.busy-act .stop{background:rgba(255,122,122,.18);color:var(--danger);font-weight:600}
+.stoppedrow{display:flex;align-items:center;gap:10px;margin:8px 6px;font-size:13px;color:var(--mu)}
+.comp-in .stopb{background:rgba(255,122,122,.2);color:var(--danger)}
+.comp-in .stopb svg{fill:currentColor}

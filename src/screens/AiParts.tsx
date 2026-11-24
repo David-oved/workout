@@ -3,6 +3,7 @@ import { Check, Undo2, Globe, Brain, FileText, X } from 'lucide-preact';
 import { chat, confirmMemory, dismissMemory, pendingProducts, retryLast, undoAdd } from '../ai/chat';
 import { ProductCard } from './ProductCard';
 import { Md } from './AiChat';
+import { BusyRow } from './BusyRow';
 
 /** רכיבי שיחה משותפים (הודעות, שורת סטטוס חיה, הצעות ושגיאות/מכסה) */
 
@@ -107,12 +108,7 @@ export function Messages({ onSuggest }: { onSuggest: (t: string) => void }) {
           </div>
         </div>
       ))}
-      {st.busy && (
-        <div class="stage" aria-live="polite">
-          <span class="sdots"><i /><i /><i /></span>
-          <span class="stg" key={st.stage?.n ?? 0}>{st.stage?.text ?? 'קיבל את ההודעה'}</span>
-        </div>
-      )}
+      <BusyRow />
       {!st.busy && lastAi?.suggestions?.length ? (
         <div class="sugg row">{lastAi.suggestions.map((s) => <button class="chip" onClick={() => onSuggest(s)}>{s}</button>)}</div>
       ) : null}

@@ -4,6 +4,7 @@ import { store } from '../core/state';
 import { dayLabel, todayKey } from '../core/dates';
 import { ui, setUi, toast } from '../ui/ui';
 import { FullScreen } from '../ui/components';
+import { BusyRow } from './BusyRow';
 import { aiState, saveAiKey } from '../ai/gemini';
 import { fileToAttachment } from '../ai/image';
 import { itemMacros } from '../ai/pure';
@@ -235,12 +236,7 @@ export function AiChat() {
             </div>
           </div>
         ))}
-        {st.busy && (
-          <div class="stage" aria-live="polite">
-            <span class="sdots"><i /><i /><i /></span>
-            <span class="stg" key={st.stage?.n ?? 0}>{st.stage?.text ?? 'קיבל את ההודעה'}</span>
-          </div>
-        )}
+        <BusyRow />
         {!st.busy && lastAi?.suggestions?.length ? (
           <div class="sugg row">{lastAi.suggestions.map((s) => <button class="chip" onClick={() => send(s)}>{s}</button>)}</div>
         ) : null}

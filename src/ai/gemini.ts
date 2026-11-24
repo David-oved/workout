@@ -326,7 +326,8 @@ export interface ChatOpts {
   deep?: boolean; // חשיבה עמוקה להודעה הזו
   docs?: boolean; // יש מסמכי ספרייה בבקשה
   onStage?: (label: string) => void; // דיווח חי על מה שקורה
-  onAttempt?: (n: number) => void; // מתחיל ניסיון מספר n (כל ניסיון הוא קריאה נפרדת ל-Gemini)
+  onAttempt?: (n: number, info: { model: string; label: string; timeoutS: number }) => void; // מתחיל ניסיון מספר n (כל ניסיון הוא קריאה נפרדת ל-Gemini)
+  signal?: AbortSignal; // עצירה ידנית של המשתמש
 }
 export interface ChatResult extends AiResult {
   model: string;
@@ -337,6 +338,11 @@ export interface ChatResult extends AiResult {
   calls: number; // כמה קריאות ל-Gemini נדרשו לתשובה הזו
   trace: string[]; // מה נוסה ומה נכשל, לבדיקה
 }
+
+/** המשתמש לחץ ״עצור״ */
+export class UserAbort extends Error { constructor() { super('נעצר'); this.name = 'UserAbort'; } }
+/** המודל לא החזיר כלום (או הפסיק להחזיר) יותר מדי זמן */
+class StallError extends Error { constructor() { super('איטי מדי'); this.name = 'StallError'; } }
 
 /** תור בשיחה בזרימה (SSE): הודעה, כרטיס, זיכרון והצעות. בשגיאה מנסה הגדרות ומודלים אחרים. */
 export async function chatTurn(turns: ChatTurn[], opts: ChatOpts = {}): Promise<ChatResult> {
@@ -373,9 +379,22 @@ export async function chatTurn(turns: ChatTurn[], opts: ChatOpts = {}): Promise<
 
   const sources: Source[] = [];
   const seenQ = new Set<string>();
+  // אם אין שום תגובה זמן רב (25 שניות, ו-60 כשיש תמונות, חיפוש או חשיבה עמוקה) או שהזרם נעצר: שולחים שוב
+  const firstMs = strong ? 60_000 : 25_000;
+  const idleMs = 30_000;
   const stream = async (model: string, v: V) => {
     const ctl = new AbortController();
     const to = setTimeout(() => ctl.abort(), 120_000);
+    const started = Date.now();
+    let got = 0;
+    let lastAt = started;
+    let stalled = false;
+    const watch = setInterval(() => {
+      const now = Date.now();
+      if ((got === 0 && now - started > firstMs) || (got > 0 && now - lastAt > idleMs)) { stalled = true; ctl.abort(); }
+    }, 1000);
+    const onAbort = () => ctl.abort();
+    opts.signal?.addEventListener('abort', onAbort);
     try {
       const r = await fetch(`${API}/models/${model}:streamGenerateContent?alt=sse`, {
         method: 'POST',
@@ -418,6 +437,7 @@ export async function chatTurn(turns: ChatTurn[], opts: ChatOpts = {}): Promise<
         for (;;) {
           const { done, value } = await reader.read();
           if (done) break;
+          got++; lastAt = Date.now();
           buf += dec.decode(value, { stream: true });
           const parts = buf.split(/\r?\n\r?\n/);
           buf = parts.pop() ?? '';
@@ -426,8 +446,13 @@ export async function chatTurn(turns: ChatTurn[], opts: ChatOpts = {}): Promise<
         if (buf.trim()) eat(buf);
       }
       return { acc, blocked };
+    } catch (err) {
+      if (stalled && !opts.signal?.aborted) throw new StallError();
+      throw err;
     } finally {
       clearTimeout(to);
+      clearInterval(watch);
+      opts.signal?.removeEventListener('abort', onAbort);
     }
   };
 
@@ -445,6 +470,7 @@ export async function chatTurn(turns: ChatTurn[], opts: ChatOpts = {}): Promise<
     let last: AiHttpError | undefined;
     let tried = 0;
     const hits: { model: string; q: QuotaInfo }[] = [];
+    const slow = new Set<string>();
     const order = modelOrder(strong, cur);
     const caps0 = aiState.get().caps;
     const dayBlocked = order.length > 0 && order.every((m) => caps0[m]?.status === 'noquota' && (caps0[m].until ?? 0) > Date.now());
@@ -473,7 +499,8 @@ export async function chatTurn(turns: ChatTurn[], opts: ChatOpts = {}): Promise<
           else { const lv = v.x ? resolveThinking(model, wantThink) : undefined; opts.onStage?.(lv && lv !== 'minimal' && lv !== 'low' ? 'חושב לעומק' : 'חושב'); }
           calls++;
           trace.push(`#${calls} ${model}${v.t ? ' +web' : ''}${v.x ? '' : ' -think'}${v.j ? '' : ' -json'}`);
-          opts.onAttempt?.(calls);
+          if (opts.signal?.aborted) throw new UserAbort();
+          opts.onAttempt?.(calls, { model, label: v.t ? 'עם חיפוש באינטרנט' : v.x ? 'עם חשיבה' : 'מהיר', timeoutS: Math.round(firstMs / 1000) });
           const { acc, blocked } = await stream(model, v);
           if (blocked) throw new Error('הבקשה נחסמה על ידי Gemini. נסה לנסח אחרת');
           if (!acc.trim()) { log.push(`${model}: תשובה ריקה`); continue; }
@@ -492,6 +519,13 @@ export async function chatTurn(turns: ChatTurn[], opts: ChatOpts = {}): Promise<
             webFailed: !!opts.web && !v.t,
           };
         } catch (e) {
+          if (opts.signal?.aborted) throw new UserAbort();
+          if (e instanceof StallError) {
+            log.push(`${model}: אין תגובה, נעצר ונשלח שוב`);
+            opts.onStage?.('אין תגובה, שולח שוב');
+            if (!slow.has(model)) { slow.add(model); ready.push(model); } // ניסיון אחד נוסף באותו מודל
+            break;
+          }
           if (!(e instanceof AiHttpError)) {
             if ((e as Error).name === 'AbortError') { log.push(`${model}: פג הזמן`); break; }
             if (e instanceof SyntaxError) { log.push(`${model}: JSON שבור`); continue; }

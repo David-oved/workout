@@ -3,7 +3,7 @@ import { store } from '../core/state';
 import { actions } from '../core/actions';
 import { uid } from '../core/dates';
 import { toast, ui } from '../ui/ui';
-import { chatTurn, type ChatTurn } from './gemini';
+import { chatTurn, UserAbort, type ChatTurn } from './gemini';
 import { buildAppData } from './context';
 import { macrosOf, tray } from '../ui/tray';
 import { enabledDocs } from './docs';
@@ -38,7 +38,7 @@ export interface Msg {
   products?: ProdProp[]; // הצעות למוצרים חדשים, מחכות לאישור שלך
   hint?: string; // הנחיה נסתרת שנשלחת ל-AI עם ההודעה (לא מוצגת)
 }
-interface ChatState { messages: Msg[]; busy: boolean; product?: boolean; error?: string; detail?: string; web: boolean; deep: boolean; stage?: { text: string; n: number }; quota?: { kind: 'minute' | 'day'; until: number; limit?: string; model?: string } }
+interface ChatState { run?: { startedAt: number; attempt: number; model: string; label: string; timeoutS: number }; stopped?: boolean; messages: Msg[]; busy: boolean; product?: boolean; error?: string; detail?: string; web: boolean; deep: boolean; stage?: { text: string; n: number }; quota?: { kind: 'minute' | 'day'; until: number; limit?: string; model?: string } }
 
 export interface Attachment { url?: string; data: string; mime: string; name?: string }
 
@@ -176,8 +176,12 @@ function saveMemory(notes: string[]): string[] {
   return added;
 }
 
+let runCtl: AbortController | undefined;
+
 async function runTurn() {
   const ph = uid();
+  runCtl = new AbortController();
+  const signal = runCtl.signal;
   const { deep } = chat.get();
   const web = chat.get().web || !!chat.get().product;
   const lastUser = [...chat.get().messages].reverse().find((m) => m.role === 'user');
@@ -189,6 +193,8 @@ async function runTurn() {
   setChat((s) => ({
     ...s,
     busy: true,
+    stopped: false,
+    run: { startedAt: Date.now(), attempt: 0, model: '', label: '', timeoutS: 0 },
     error: undefined,
     detail: undefined,
     quota: undefined,
@@ -207,7 +213,12 @@ async function runTurn() {
       deep,
       docs: lib.parts.length + lib.texts.length > 0,
       onStage: stage,
-      onAttempt: (n: number) => { attemptNo = n; if (n > 1) patchMsg(ph, (m) => (m.text ? { ...m, text: '' } : m)); },
+      signal,
+      onAttempt: (n: number, info: { model: string; label: string; timeoutS: number }) => {
+        attemptNo = n;
+        chat.set((s) => ({ ...s, run: { startedAt: s.run?.startedAt ?? Date.now(), attempt: n, model: info.model, label: info.label, timeoutS: info.timeoutS } }));
+        if (n > 1) patchMsg(ph, (m) => (m.text ? { ...m, text: '' } : m));
+      },
       onDelta: (acc: string) => {
         if (attemptNo > 1) return;
         // הכרטיס נכתב לפני התשובה: אם יש בו פריט משולב, התשובה הזו תוחלף בניסיון השני, אז לא מציגים אותה בכלל
@@ -238,7 +249,7 @@ async function runTurn() {
       try {
         const again = await chatTurn(fixTurns, { ...callOpts, onDelta: undefined, onAttempt: undefined });
         res = { ...again, calls: first.calls + again.calls, trace: [...first.trace, '— פירוק פריט משולב —', ...again.trace] };
-      } catch { /* נשארים עם התשובה הראשונה */ }
+      } catch (er) { if (er instanceof UserAbort) throw er; /* נשארים עם התשובה הראשונה */ }
     }
     // ה-AI חזר עם אותה ארוחה שכבר נוספה? לא פותחים כרטיס כפול
     const lastCard = [...chat.get().messages].reverse().find((m) => m.card === 'added' || m.card === 'draft');
@@ -268,13 +279,20 @@ async function runTurn() {
       }
       if (idx >= 0) msgs[idx] = ai;
       else msgs = [...msgs, ai];
-      return { ...s, messages: msgs, busy: false };
+      return { ...s, messages: msgs, busy: false, run: undefined };
     });
   } catch (e) {
+    if (e instanceof UserAbort || signal.aborted) {
+      // המשתמש עצר: מסירים את התשובה החלקית ומשאירים את ההודעה שלו, עם אפשרות לשלוח שוב
+      clearStages();
+      setChat((s) => ({ ...s, busy: false, run: undefined, stopped: true, messages: s.messages.filter((m) => m.id !== ph) }));
+      return;
+    }
     clearStages();
     setChat((s) => ({
       ...s,
       busy: false,
+      run: undefined,
       messages: s.messages.filter((m) => m.id !== ph),
       error: (e as Error).message,
       detail: (e as { detail?: string }).detail,
@@ -307,6 +325,18 @@ export async function sendMessage(text: string, files: Attachment[], opts?: { pr
 }
 
 export const retryLast = () => (chat.get().busy ? undefined : runTurn());
+
+/** עצירה באמצע חשיבה */
+export function stopChat() {
+  runCtl?.abort();
+}
+
+/** עוצר את הניסיון הנוכחי ושולח את אותה הודעה שוב מיד */
+export async function retryNow() {
+  stopChat();
+  for (let i = 0; i < 40 && chat.get().busy; i++) await new Promise((r) => setTimeout(r, 40));
+  void retryLast();
+}
 
 export function restoreChat(messages: Msg[]) {
   setChat((s) => ({ ...s, messages, busy: false }));

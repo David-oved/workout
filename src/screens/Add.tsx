@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
-import { ScanLine, Check, HelpCircle, X, Plus, Minus, Sparkles, Camera, Paperclip, ArrowUp, ChevronDown, Star, Globe, Brain, ChevronRight, Pencil, Info, MessageSquarePlus, Utensils, History, PencilLine } from 'lucide-preact';
+import { ScanLine, Check, HelpCircle, X, Plus, Minus, Sparkles, Camera, Paperclip, ArrowUp, ChevronDown, Star, Globe, Brain, ChevronRight, Pencil, Info, MessageSquarePlus, Utensils, History, PencilLine, Square } from 'lucide-preact';
 import { store } from '../core/state';
 import { actions } from '../core/actions';
 import { dayInfo, fmt } from '../core/calc';
@@ -9,7 +9,7 @@ import { ui, setUi, toast } from '../ui/ui';
 import { BigSheet, Sheet } from '../ui/components';
 import { aiState } from '../ai/gemini';
 import { fileToAttachment } from '../ai/image';
-import { chat, draftOf, markAdded, pendingProducts, removeItem, resetChat, restoreChat, sendMessage, setDeep, setGrams, setPer, setWeb, undoAdd, type Attachment } from '../ai/chat';
+import { chat, stopChat, draftOf, markAdded, pendingProducts, removeItem, resetChat, restoreChat, sendMessage, setDeep, setGrams, setPer, setWeb, undoAdd, type Attachment } from '../ai/chat';
 import { AiSetup } from './AiChat';
 import { Messages } from './AiParts';
 import { buildCandidates, candMacros, defaultPortion, gapSuggestions, macrosOf, makeEntries, parseEntry, searchCandidates, stepFor, topTiles, tray, trayAdd, trayAddDish, trayAddFood, trayClear, trayPer, trayPerByFood, trayRemove, traySet, traySetName, traySetOne, type Cand, type TItem } from '../ui/tray';
@@ -362,7 +362,9 @@ export function AddScreen() {
           onFocus={() => setTrayOpen(false)}
           onBlur={() => setTimeout(() => window.scrollTo(0, 0), 60)}
           onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submit(); } }} />
-        <button class={'ic go' + (q.trim() || files.length > 0 ? ' on' : '')} aria-label="שלח" disabled={!q.trim() && files.length === 0} onClick={() => submit()}><ArrowUp /></button>
+        {ch.busy
+          ? <button class="ic go on stopb" aria-label="עצור" onClick={stopChat}><Square /></button>
+          : <button class={'ic go' + (q.trim() || files.length > 0 ? ' on' : '')} aria-label="שלח" disabled={!q.trim() && files.length === 0} onClick={() => submit()}><ArrowUp /></button>}
       </div>
     </div>
   );
