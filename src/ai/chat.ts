@@ -24,7 +24,7 @@ export interface Msg {
   fileNames?: string[]; // קבצי PDF שצורפו להודעה
   sent?: AiItem[]; // מה שה-AI החזיר (להיסטוריית השיחה)
   items?: AiItem[]; // הכרטיס הנוכחי (ניתן לעריכה)
-  card?: 'draft' | 'added' | 'old';
+  card?: 'draft' | 'added' | 'old' | 'cleared';
   memoryAsk?: string[]; // דברים שה-AI מציע לזכור עליך, מחכים לאישור
   edited?: boolean;
   addedIds?: string[];
@@ -120,7 +120,7 @@ function buildTurns(msgs: Msg[], lib: Lib, hints: string): ChatTurn[] {
       const note = !files && (m.images?.length || m.fileNames?.length) ? ' (צורף קובץ קודם)' : '';
       return { role: 'user', text: m.text + note + (m.hint ? `\n\n${m.hint}` : ''), images: files };
     }
-    const items = m.card === 'added' ? [] : (m.items ?? m.sent ?? []);
+    const items = m.card === 'added' || m.card === 'cleared' ? [] : (m.items ?? m.sent ?? []);
     const prods = (m.products ?? []).filter((p) => p.status === 'pending').map(({ id: _i, status: _s, ...p }) => p);
     return { role: 'model', text: JSON.stringify({ reply: m.text, items: items.map(stripId), ...(prods.length ? { products: prods } : {}) }) };
   });
@@ -276,6 +276,10 @@ async function runTurn() {
         if (prev) msgs[prev[1]] = { ...prev[0], items: undefined, card: 'old' };
         ai.items = res.items;
         ai.card = 'draft';
+      } else if (res.clearCard) {
+        // ה-AI מרוקן את כרטיס ההצעה (לא את היומן)
+        const prev = msgs.map((m, i) => [m, i] as const).reverse().find(([m]) => m.card === 'draft');
+        if (prev) msgs[prev[1]] = { ...prev[0], items: undefined, card: 'cleared' };
       }
       if (idx >= 0) msgs[idx] = ai;
       else msgs = [...msgs, ai];

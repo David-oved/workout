@@ -232,6 +232,7 @@ export function AiChat() {
                   <div class="mu num" style={{ marginTop: 6 }}>{m.items?.map((i) => `${i.name} ${i.grams} ג׳`).join(' · ')}</div>
                 </div>
               )}
+              {m.card === 'cleared' && <div class="mu" style={{ fontSize: 12, margin: '4px 6px' }}>הכרטיס הוסר</div>}
               {m.card === 'old' && <div class="mu" style={{ fontSize: 12, margin: '4px 6px' }}>הכרטיס הוחלף בגרסה מעודכנת</div>}
             </div>
           </div>

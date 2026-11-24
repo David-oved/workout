@@ -104,6 +104,7 @@ export function Messages({ onSuggest }: { onSuggest: (t: string) => void }) {
                 <div class="mu num" style={{ marginTop: 6 }}>{m.items?.map((i) => `${i.name} ${i.grams} ג׳`).join(' · ')}</div>
               </div>
             )}
+            {m.card === 'cleared' && <div class="mu" style={{ fontSize: 12, margin: '4px 6px' }}>הכרטיס הוסר</div>}
             {m.card === 'old' && <div class="mu" style={{ fontSize: 12, margin: '4px 6px' }}>הארוחה עודכנה בהודעה הבאה</div>}
           </div>
         </div>

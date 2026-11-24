@@ -6,6 +6,7 @@ import { actions } from '../core/actions';
 import { fmt, suggestTargets } from '../core/calc';
 import { DAY_NAMES, todayKey, uid } from '../core/dates';
 import { setUi, ui, toast, openAdd } from '../ui/ui';
+import { clearAiLog, readAiLog, type AiLogRow } from '../ai/gemini';
 import { aiState, getAiKey, maskKey, clearAiKey, testModel, refreshModels, scanModels } from '../ai/gemini';
 import { allowedLevels, modelHint, resolveThinking, THINK_LABELS, type Think } from '../ai/pure';
 import { addDoc, docsState, loadDocs, removeDoc, toggleDoc } from '../ai/docs';
@@ -21,9 +22,9 @@ import { siri, enableSiri, disableSiri, rotateSiri, siriUrl, testSiri } from '..
 import { APP_VERSION, BUILD_ID, updater, checkForUpdate, applyUpdate } from '../update/updater';
 import type { Macros, Profile, TargetKey } from '../core/types';
 
-type Page = 'home' | 'profile' | 'targets' | 'week' | 'meals' | 'start' | 'backup' | 'updates' | 'calendar' | 'gcal' | 'ai' | 'aimodels' | 'aiknow' | 'remind' | 'look' | 'siri';
+type Page = 'home' | 'profile' | 'targets' | 'week' | 'meals' | 'start' | 'backup' | 'updates' | 'calendar' | 'gcal' | 'ai' | 'aimodels' | 'aiknow' | 'remind' | 'look' | 'siri' | 'ailog';
 const TITLES: Record<Page, string> = {
-  look: 'מראה והתנהגות', siri: 'Siri וקיצורים',
+  look: 'מראה והתנהגות', siri: 'Siri וקיצורים', ailog: 'יומן קריאות ל-AI',
   home: 'הגדרות', profile: 'פרופיל', targets: 'יעדי תזונה', week: 'שבוע ואימונים', meals: 'ארוחות', start: 'תחילת יום', backup: 'גיבוי', updates: 'עדכונים', calendar: 'פיד לקריאה בלבד', gcal: 'Google Calendar', ai: 'AI תזונה', aimodels: 'מודלים וחשיבה', aiknow: 'ידע וזיכרון', remind: 'תזכורות והתראות',
 };
 const TARGETS: [TargetKey, string][] = [
@@ -82,6 +83,48 @@ function VpLog() {
         <button class="btn sm" onClick={() => { clearLog(); setN((n) => n + 1); }}>נקה</button>
       </div>
     </div>
+  );
+}
+
+/** יומן קריאות ל-AI: כמה ניסיונות נדרשו להודעה ומה נכשל, כדי לאתר את הסיבה */
+function AiLogView() {
+  const [, setN] = useState(0);
+  const rows = readAiLog();
+  const turns = new Map<string, AiLogRow[]>();
+  for (const r of rows) turns.set(r.turn, [...(turns.get(r.turn) ?? []), r]);
+  const list = [...turns.values()];
+  const first = list.filter((x) => x[0].ok).length;
+  const fails = new Map<string, number>();
+  for (const r of rows) if (!r.ok) { const k = r.note.replace(/[0-9]+ תווים/, '').replace(/^(HTTP \d+).*/, '$1').slice(0, 40); fails.set(k, (fails.get(k) ?? 0) + 1); }
+  const top = [...fails.entries()].sort((a, b) => b[1] - a[1]).slice(0, 4);
+  const hm = (t: number) => { const d = new Date(t); return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}:${String(d.getSeconds()).padStart(2, '0')}`; };
+  const line = (r: AiLogRow) => `${hm(r.t)} #${r.turn} ${r.ok ? 'OK ' : 'ERR'} ${r.model} [${r.v}] ${(r.ms / 1000).toFixed(1)}s ${r.note}`;
+  const text = rows.slice().reverse().map(line).join('\n');
+  return (
+    <>
+      <div class="g card">
+        {list.length === 0 ? <div class="mu">עוד אין נתונים. שלח כמה הודעות ל-AI וחזור לכאן.</div> : (
+          <>
+            <div style={{ fontSize: 15, lineHeight: 1.7 }}>
+              <div>מתוך <b class="num">{list.length}</b> הודעות אחרונות, <b class="num">{first}</b> הצליחו בניסיון הראשון (<span class="num">{Math.round((first / list.length) * 100)}%</span>)</div>
+              <div>ממוצע <b class="num">{(rows.length / list.length).toFixed(1)}</b> קריאות להודעה</div>
+            </div>
+            {top.length > 0 && (
+              <div style={{ marginTop: 10 }}>
+                <div class="mu" style={{ fontSize: 12.5, marginBottom: 4 }}>הכשלים הנפוצים</div>
+                {top.map(([k, n]) => <div key={k} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13.5, padding: '3px 0' }}><span dir="ltr" style={{ textAlign: 'left' }}>{k}</span><b class="num">{n}</b></div>)}
+              </div>
+            )}
+          </>
+        )}
+      </div>
+      <pre class="adet" style={{ direction: 'ltr', textAlign: 'left', whiteSpace: 'pre-wrap', fontSize: 10.5, maxHeight: 320, overflow: 'auto', marginTop: 10 }}>{rows.slice(-25).reverse().map(line).join('\n') || '—'}</pre>
+      <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+        <button class="btn sm" onClick={() => setN((n) => n + 1)}>רענן</button>
+        <button class="btn sm" onClick={async () => { try { await navigator.clipboard.writeText(text); toast('הועתק'); } catch { toast('ההעתקה נכשלה'); } }}>העתק הכל</button>
+        <button class="btn sm" onClick={() => { clearAiLog(); setN((n) => n + 1); }}>נקה</button>
+      </div>
+    </>
   );
 }
 
@@ -149,7 +192,7 @@ function SettingsBody() {
     <>
       <div class="hd" style={{ marginBottom: 10 }}>
         <div>
-          {page !== 'home' && <button class="back" onClick={() => setPage(page === 'aimodels' || page === 'aiknow' ? 'ai' : 'home')}><ChevronRight />{page === 'aimodels' || page === 'aiknow' ? 'AI תזונה' : 'הגדרות'}</button>}
+          {page !== 'home' && <button class="back" onClick={() => setPage(page === 'aimodels' || page === 'aiknow' || page === 'ailog' ? 'ai' : 'home')}><ChevronRight />{page === 'aimodels' || page === 'aiknow' || page === 'ailog' ? 'AI תזונה' : 'הגדרות'}</button>}
           <div class="t">{hdr}</div>
           {page === 'home' && <div class="s">הכל ניתן לשינוי</div>}
         </div>
@@ -225,6 +268,8 @@ function SettingsBody() {
             )}
           </>
         )}
+
+        {page === 'ailog' && <AiLogView />}
 
         {page === 'look' && (
           <>
@@ -515,6 +560,7 @@ function SettingsBody() {
             <div class="g rows">
               <Row icon={<Sparkles />} title="מודלים וחשיבה" value={`חשיבה: ${THINK_LABELS[set.ai.think as Think]} · טקסט: ${set.ai.textModel || 'אוטומטי'} · תמונות/חיפוש: ${set.ai.visionModel || 'אוטומטי'}`} onClick={() => setPage('aimodels')} />
               <Row icon={<User />} title="ידע וזיכרון" value={`${set.ai.memory.length} דברים בזיכרון · ${docsS.docs.filter((d) => d.enabled).length} מסמכים כלולים · אינטרנט: ${set.ai.web ? 'פעיל כברירת מחדל' : 'לפי בקשה'}`} onClick={() => setPage('aiknow')} />
+              <Row icon={<RefreshCw />} title="יומן קריאות ל-AI" value="למה לפעמים צריך כמה ניסיונות" onClick={() => setPage('ailog')} />
             </div>
             <button class="btn primary block" style={{ marginTop: 14 }} disabled={aiS.testing} onClick={() => void testModel()}><RefreshCw class={aiS.testing ? 'spin' : ''} /> {aiS.testing ? 'בודק…' : 'בדוק חיבור למודל'}</button>
             <button class="btn block" style={{ marginTop: 10 }} onClick={() => { setUi({ settingsOpen: false }); openAdd(undefined, undefined, 'chat'); }}><Sparkles /> פתח שיחה עם ה-AI</button>

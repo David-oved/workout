@@ -8,6 +8,17 @@ import { buildSystemPrompt, allowedLevels, isNoQuota, parseAiJson, pickModel, re
  * שם המודל נבחר ונבדק בפועל מול המפתח (שמות המודלים משתנים), ואפשר לדרוס אותו בהגדרות.
  */
 const API = 'https://generativelanguage.googleapis.com/v1beta';
+
+/** יומן קריאות: כל ניסיון מול Gemini ומה יצא ממנו, כדי להבין למה לפעמים צריך כמה ניסיונות */
+export interface AiLogRow { t: number; turn: string; model: string; v: string; ok: boolean; ms: number; note: string }
+const AILOG = 'wo:ai-log';
+export const readAiLog = (): AiLogRow[] => { try { return JSON.parse(localStorage.getItem(AILOG) ?? '[]'); } catch { return []; } };
+export const clearAiLog = () => { try { localStorage.removeItem(AILOG); } catch { /* ignore */ } };
+const logAttempt = (r: AiLogRow) => { try { const l = readAiLog(); l.push(r); localStorage.setItem(AILOG, JSON.stringify(l.slice(-80))); } catch { /* ignore */ } };
+/** מודל שדחה את הגדרות החשיבה (400): לא שולחים לו אותן ל-24 שעות, כדי לא לבזבז קריאה בכל הודעה */
+const NOTHINK = 'wo:ai-nothink';
+const noThink = (m: string): boolean => { try { const j = JSON.parse(localStorage.getItem(NOTHINK) ?? '{}'); return Date.now() - (j[m] ?? 0) < 86400_000; } catch { return false; } };
+const markNoThink = (m: string) => { try { const j = JSON.parse(localStorage.getItem(NOTHINK) ?? '{}'); j[m] = Date.now(); localStorage.setItem(NOTHINK, JSON.stringify(j)); } catch { /* ignore */ } };
 const KEY = 'wo:ai-key';
 const MODEL = 'wo:ai-model';
 const MODELS = 'wo:ai-models';
@@ -462,6 +473,12 @@ export async function chatTurn(turns: ChatTurn[], opts: ChatOpts = {}): Promise<
     : [{ x: true, j: true, t: false }, { x: false, j: true, t: false }, { x: false, j: false, t: false }];
 
   const log: string[] = [];
+  const turnId = uid().slice(0, 4);
+  let att: { model: string; v: V; t1: number } | undefined;
+  const rec = (ok: boolean, note: string) => {
+    if (!att) return;
+    logAttempt({ t: Date.now(), turn: turnId, model: att.model, v: `${att.v.t ? 'web ' : ''}${att.v.x ? 'think' : 'nothink'}${att.v.j ? ' json' : ''}`, ok, ms: Math.round(performance.now() - att.t1), note: note.slice(0, 120) });
+  };
   const trace: string[] = [];
   let calls = 0;
   const t0 = performance.now();
@@ -493,6 +510,7 @@ export async function chatTurn(turns: ChatTurn[], opts: ChatOpts = {}): Promise<
     if (lg && ready.includes(lg)) { ready.splice(ready.indexOf(lg), 1); ready.unshift(lg); }
     for (const model of ready) {
       for (const v of variants) {
+        if (v.x && noThink(model)) continue;
         try {
           opts.onStage?.(tried++ === 0 ? `שולח ל-${model}` : `עובר ל-${model}`);
           if (v.t) opts.onStage?.('חוקר באינטרנט');
@@ -501,12 +519,14 @@ export async function chatTurn(turns: ChatTurn[], opts: ChatOpts = {}): Promise<
           trace.push(`#${calls} ${model}${v.t ? ' +web' : ''}${v.x ? '' : ' -think'}${v.j ? '' : ' -json'}`);
           if (opts.signal?.aborted) throw new UserAbort();
           opts.onAttempt?.(calls, { model, label: v.t ? 'עם חיפוש באינטרנט' : v.x ? 'עם חשיבה' : 'מהיר', timeoutS: Math.round(firstMs / 1000) });
+          att = { model, v, t1: performance.now() };
           const { acc, blocked } = await stream(model, v);
-          if (blocked) throw new Error('הבקשה נחסמה על ידי Gemini. נסה לנסח אחרת');
-          if (!acc.trim()) { log.push(`${model}: תשובה ריקה`); continue; }
+          if (blocked) { rec(false, 'נחסם: ' + blocked); throw new Error('הבקשה נחסמה על ידי Gemini. נסה לנסח אחרת'); }
+          if (!acc.trim()) { rec(false, 'תשובה ריקה'); log.push(`${model}: תשובה ריקה`); continue; }
           const res = opts.raw ? ({ reply: acc, items: [], products: [], memory: [], suggestions: [] } as AiResult) : parseAiJson(acc, uid);
           // כשכופים JSON והמודל החזיר שברי טקסט (למשל reply"}), לא מציגים את זה אלא עוברים לנסיון הבא
-          if (res.fallback && v.j) { log.push(`${model}: תשובה לא תקינה (לא JSON): ${acc.trim().slice(0, 300)}`); continue; }
+          if (res.fallback && v.j) { rec(false, 'לא JSON: ' + acc.trim().slice(0, 60)); log.push(`${model}: תשובה לא תקינה (לא JSON): ${acc.trim().slice(0, 300)}`); continue; }
+          rec(true, `${acc.length} תווים`);
           lastGood[strong ? 's' : 't'] = model;
           return {
             ...res,
@@ -519,18 +539,20 @@ export async function chatTurn(turns: ChatTurn[], opts: ChatOpts = {}): Promise<
             webFailed: !!opts.web && !v.t,
           };
         } catch (e) {
-          if (opts.signal?.aborted) throw new UserAbort();
+          if (opts.signal?.aborted) { rec(false, 'נעצר על ידך'); throw new UserAbort(); }
           if (e instanceof StallError) {
+            rec(false, 'אין תגובה (תקוע)');
             log.push(`${model}: אין תגובה, נעצר ונשלח שוב`);
             opts.onStage?.('אין תגובה, שולח שוב');
             if (!slow.has(model)) { slow.add(model); ready.push(model); } // ניסיון אחד נוסף באותו מודל
             break;
           }
           if (!(e instanceof AiHttpError)) {
-            if ((e as Error).name === 'AbortError') { log.push(`${model}: פג הזמן`); break; }
-            if (e instanceof SyntaxError) { log.push(`${model}: JSON שבור`); continue; }
+            if ((e as Error).name === 'AbortError') { rec(false, 'פג הזמן'); log.push(`${model}: פג הזמן`); break; }
+            if (e instanceof SyntaxError) { rec(false, 'JSON שבור'); log.push(`${model}: JSON שבור`); continue; }
             throw e;
           }
+          rec(false, `HTTP ${e.status}: ${e.raw || e.message}`);
           log.push(`${model}${v.x ? '' : v.t ? ' (בלי הגדרות מהירות)' : ' (בלי כלים/JSON)'} → ${e.status}: ${e.raw || e.message}`);
           last = e;
           if (e.fatal) throw withDetail(e, log);
@@ -547,7 +569,7 @@ export async function chatTurn(turns: ChatTurn[], opts: ChatOpts = {}): Promise<
             opts.onStage?.(`הגעת למגבלה ב-${model}, מנסה מודל אחר`);
             break;
           }
-          if (e.status === 400) continue;
+          if (e.status === 400) { if (v.x) markNoThink(model); continue; }
           if (e.status >= 500 || e.status === 429) await sleep(e.status === 429 ? 2000 : 700);
           break;
         }
