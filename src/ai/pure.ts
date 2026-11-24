@@ -303,3 +303,15 @@ export const retryDelayMs = (raw: string): number => {
   const m = raw.match(/retry(?:Delay)?[^0-9]{0,12}(\d+(?:\.\d+)?)\s*s/i);
   return m ? Math.min(20_000, Math.round(parseFloat(m[1]) * 1000)) : 0;
 };
+
+/** הנחיה נסתרת לניתוח תמונה שהגיעה מקיצור (משותף לאפליקציה ולשרת) */
+export const PHOTO_HINT = '[PHOTO FROM SHORTCUT] He sent this photo from an iPhone shortcut, and may have added a short note. The photo shows what he ate, or a food package, or a nutrition label. Use his note as extra information (what it is, quantities, brand). Return one meal card in "items" as usual (source "label" when a nutrition label is readable). If you cannot tell what is in the photo, return no items and say in "reply" what you need (one short sentence).';
+
+/** מתי נשלחה ההודעה או התמונה (שעון ישראל), כדי שה-AI ישפוט את הארוחה לפי זמן האכילה ולא לפי זמן הניתוח */
+export function sentAtBlock(ts: number): string {
+  const parts = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Jerusalem', hour: '2-digit', minute: '2-digit', hour12: false }).formatToParts(new Date(ts));
+  const hh = Number(parts.find((p) => p.type === 'hour')?.value ?? 12) % 24;
+  const mm = parts.find((p) => p.type === 'minute')?.value ?? '00';
+  const part = hh < 5 ? 'night' : hh < 12 ? 'morning' : hh < 17 ? 'afternoon' : hh < 21 ? 'evening' : 'night';
+  return `[NOW]\nthis was sent at ${String(hh).padStart(2, '0')}:${mm} local time (${part}), time zone Asia/Jerusalem. It describes something he already ate around that time, so judge the meal accordingly.`;
+}

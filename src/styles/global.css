@@ -1123,3 +1123,15 @@ body.fx .as-tray.dock{animation:slideUp .5s var(--spring) backwards}
 /* תמונה מקיצור */
 .sr-th{width:34px;height:34px;border-radius:9px;object-fit:cover;flex:none;border:.5px solid rgba(255,255,255,.18)}
 .sr-h b+.x{margin-inline-start:auto}
+
+/* ===== תור הארוחות מהקיצור ===== */
+.sr-slots{display:flex;gap:6px;flex-wrap:wrap}
+.sr-slots .chip{height:30px;padding:0 12px;font-size:13px;flex:none}
+.siric .sr-busy small{font-size:12px}
+.isum .sr-q{color:var(--mu)}
+.is-th{display:flex;gap:6px;overflow:hidden}
+.is-th img,.is-tx{width:38px;height:38px;border-radius:10px;object-fit:cover;flex:none;border:.5px solid rgba(255,255,255,.18);background:rgba(255,255,255,.06)}
+.is-tx{display:flex;align-items:center;justify-content:center;color:var(--accent)}
+.is-tx svg{width:18px;height:18px}
+.inbox-list{display:flex;flex-direction:column;gap:12px;padding:6px 2px 16px;overflow-y:auto;flex:1}
+.inbox-foot{padding:10px 4px calc(14px + env(safe-area-inset-bottom));border-top:.5px solid rgba(255,255,255,.1)}

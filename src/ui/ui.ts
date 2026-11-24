@@ -26,6 +26,7 @@ export interface Ui {
   glance: boolean;
   stat: 'k' | 'p' | 'c' | 'f' | null; // פירוט מדד
   addText: string | null; // טקסט שנשלח אוטומטית כשמסך ההוספה נפתח (למשל מ-Siri)
+  inboxOpen: boolean; // רשימת הארוחות שמחכות לאישור
   addTray: TItem[] | null; // פריטים שנכנסים למגש כשמסך ההוספה נפתח (כרטיס מוכן שרוצים לערוך)
 }
 
@@ -50,15 +51,15 @@ export const ui = createStore<Ui>({
   stat: null,
   addText: null,
   addTray: null,
+  inboxOpen: false,
 });
 
 export const setUi = (patch: Partial<Ui>) => ui.set((s) => ({ ...s, ...patch }));
 
 /** ארוחה ברירת מחדל לפי השעה: הקרובה ביותר לשעה הנוכחית */
-export function guessSlot(): string {
+export function guessSlot(at: Date = new Date()): string {
   const slots = store.get().settings.slots;
-  const now = new Date();
-  const mins = now.getHours() * 60 + now.getMinutes();
+  const mins = at.getHours() * 60 + at.getMinutes();
   let best = slots[0]?.id ?? 'snack';
   let bestD = Infinity;
   for (const s of slots) {

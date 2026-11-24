@@ -18,6 +18,7 @@ import { feedState, feedUrl, webcalUrl, hasToken, verifyToken, saveToken, enable
 import { FullScreen, Sheet } from '../ui/components';
 import { exportBackup, importBackup } from '../core/backup';
 import { clearLog, fmtSnap, readLog, snapshot } from '../viewportLog';
+import { srvEnabled, setSrvEnabled } from '../siri/cfg';
 import { siri, enableSiri, disableSiri, rotateSiri, siriUrl, photoUrl, testSiri } from '../siri/siri';
 import { APP_VERSION, BUILD_ID, updater, checkForUpdate, applyUpdate } from '../update/updater';
 import type { Macros, Profile, TargetKey } from '../core/types';
@@ -134,6 +135,7 @@ function SettingsBody() {
   const fs_ = feedState.use((x) => x);
   const sr = siri.use((x) => x);
   const siriOn = sr.on;
+  const [srvOn, setSrvOn] = useState(srvEnabled());
   const [tok, setTok] = useState('');
   const [busy, setBusy] = useState(false);
   const [tokErr, setTokErr] = useState('');
@@ -241,6 +243,12 @@ function SettingsBody() {
             </div>
             {sr.on && (
               <>
+                <div class="g rows">
+                  <button class="row2" onClick={() => { const v = !srvOn; setSrvOn(v); setSrvEnabled(v); toast(v ? 'הניתוח בשרת פעיל' : 'המפתח נמחק מהשרת'); }}>
+                    <span>ניתוח בשרת, גם כשהאפליקציה סגורה<small>הכרטיסים מוכנים כשאתה נכנס. השרת מנתח לפי הסדר, ומנסה שוב לבד אחרי תקלה או רשת חלשה. כשזה כבוי, המפתח נמחק מהשרת והניתוח קורה רק כשהאפליקציה פתוחה.</small></span>
+                    <span class={'tgl' + (srvOn ? ' on' : '')} />
+                  </button>
+                </div>
                 <div class="sec"><span>הכתובת האישית שלך</span></div>
                 <div class="g card">
                   <pre class="adet" style={{ direction: 'ltr', textAlign: 'left', whiteSpace: 'pre-wrap', wordBreak: 'break-all', fontSize: 11.5, margin: 0 }}>{siriUrl()}</pre>
@@ -278,7 +286,7 @@ function SettingsBody() {
                     <li><b>״קבל תוכן של כתובת URL״</b> עם הכתובת לתמונות: שיטה <b>POST</b>, גוף הבקשה <b>טופס</b>. שני שדות מסוג טקסט: <b>image</b> = תוצאת הקידוד, ו-<b>text</b> = ההערה (יכולה להיות ריקה).</li>
                   </ol>
                 </div>
-                <div class="note">הטקסט עובר דרך ה-Worker שלך ב-Cloudflare ונשמר שם עד שהאפליקציה מושכת אותו (לכל היותר 14 יום). הכתובת היא סוד: מי שיש לו אותה יכול לשלוח לך ארוחות, ולכן היא נשמרת רק במכשיר ולא בגיבוי.</div>
+                <div class="note">הטקסט עובר דרך ה-Worker שלך ב-Cloudflare ונשמר שם עד שהאפליקציה מושכת אותו (לכל היותר 14 יום). הכתובת היא סוד: מי שיש לו אותה יכול לשלוח לך ארוחות, ולכן היא נשמרת רק במכשיר ולא בגיבוי. כשהניתוח בשרת פעיל, מפתח ה-Gemini נשמר גם ב-Worker הפרטי שלך (ב-Cloudflare), ולא בגיבוי ולא ב-GitHub. כיבוי המתג מוחק אותו משם.</div>
               </>
             )}
           </>

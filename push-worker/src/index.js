@@ -7,6 +7,7 @@
  * 3. ה-Service Worker באפליקציה מקבל את ה-Push, שולף את הטקסט מ-/pending ומציג התראה.
  * אין כאן שום מידע אישי מעבר לטקסט התזכורות ולכתובת ה-Push של המכשיר. המפתח הפרטי (VAPID) נשמר כסוד ב-Cloudflare.
  */
+import { loadInbox as loadQ, loadCfg, processToken, processAll, saveCfg, deleteCfg } from './queue.js';
 const ORIGINS = ['https://david-oved.github.io', 'http://localhost:5173'];
 const SUBJECT = 'https://david-oved.github.io/workout/';
 const enc = new TextEncoder();
@@ -71,7 +72,7 @@ const MAX_IMG = 9 * 1024 * 1024;
 const imgKey = (t, id) => `img:${t}:${id}`;
 const fromB64 = (s) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0)).buffer;
 
-async function siri(req, env, url, token, action) {
+async function siri(req, env, url, token, action, ctx) {
   // /add ו-/photo: טקסט, תמונה, או שניהם. תמונה מגיעה כקובץ בטופס (multipart), כגוף גולמי של תמונה, או כ-base64 ב-JSON
   if (action === 'add' || action === 'photo') {
     let t = url.searchParams.get('t') ?? url.searchParams.get('text') ?? '';
@@ -126,13 +127,15 @@ async function siri(req, env, url, token, action) {
     if (!t && !img) return new Response('לא התקבל טקסט או תמונה', { status: 400, headers: { ...TXT, ...cors(req) } });
     const list = await loadInbox(env, token);
     const id = crypto.randomUUID().replace(/-/g, '').slice(0, 12);
-    const item = { id, text: t, ts: Date.now() };
+    const item = { id, text: t, ts: Date.now(), st: 'q' };
     if (img) {
       await env.SUBS.put(imgKey(token, id), img.buf, { expirationTtl: 14 * 86400 });
       item.img = img.mime;
     }
     list.push(item);
     await env.SUBS.put(inboxKey(token), JSON.stringify(list.slice(-20)), { expirationTtl: 14 * 86400 });
+    // ניתוח מיידי ברקע (ואם לא הספיק, השעון ממשיך כל דקה)
+    if (ctx) ctx.waitUntil(processToken(env, token, { budgetMs: 15_000, timeoutMs: 24_000 }).catch(() => undefined));
     return new Response(img ? 'התמונה נרשמה ✓' : action === 'photo' ? `נרשם ✓ אבל בלי תמונה. הגיע: ${seen.join(' ') || ctype || 'כלום'}` : 'נרשם ✓', { headers: { ...TXT, ...cors(req) } });
   }
   if (action.startsWith('img/')) {
@@ -142,7 +145,19 @@ async function siri(req, env, url, token, action) {
     if (!buf) return json(req, { ok: false, error: 'no image' }, 404);
     return new Response(buf, { headers: { 'Content-Type': it.img, 'Cache-Control': 'no-store', ...cors(req) } });
   }
-  if (action === 'list') return json(req, { items: await loadInbox(env, token) });
+  if (action === 'config' && req.method === 'POST') {
+    let b;
+    try { b = await req.json(); } catch { return json(req, { ok: false, error: 'bad json' }, 400); }
+    const list = (v) => (Array.isArray(v) ? v.map(String).slice(0, 3) : []);
+    if (typeof b.key !== 'string' || b.key.length < 20 || b.key.length > 200) return json(req, { ok: false, error: 'bad key' }, 400);
+    const think = {};
+    for (const [k, v] of Object.entries(b.think && typeof b.think === 'object' ? b.think : {})) if (typeof v === 'string') think[String(k).slice(0, 60)] = v.slice(0, 12);
+    await saveCfg(env, token, { key: b.key, vision: list(b.vision), text: list(b.text), think, system: String(b.system ?? '').slice(0, 24000), ctx: String(b.ctx ?? '').slice(0, 24000), at: Date.now() });
+    if (ctx) ctx.waitUntil(processToken(env, token, { budgetMs: 15_000, timeoutMs: 24_000 }).catch(() => undefined));
+    return json(req, { ok: true });
+  }
+  if (action === 'clear') { await deleteCfg(env, token); return json(req, { ok: true }); }
+  if (action === 'list') return json(req, { items: await loadQ(env, token), srv: !!(await loadCfg(env, token))?.key });
   if (action === 'ack' && req.method === 'POST') {
     let ids = [];
     try { const b = await req.json(); ids = Array.isArray(b.ids) ? b.ids.map(String) : []; } catch { /* ignore */ }
@@ -155,11 +170,11 @@ async function siri(req, env, url, token, action) {
   return json(req, { ok: false, error: 'not found' }, 404);
 }
 
-async function handle(req, env) {
+async function handle(req, env, ctx) {
   const url = new URL(req.url);
   if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors(req) });
-  const sm = url.pathname.match(/^\/siri\/([A-Za-z0-9_-]{22,64})\/(add|photo|list|ack|img\/[a-f0-9]{12})$/);
-  if (sm) return siri(req, env, url, sm[1], sm[2]);
+  const sm = url.pathname.match(/^\/siri\/([A-Za-z0-9_-]{22,64})\/(add|photo|list|ack|config|clear|img\/[a-f0-9]{12})$/);
+  if (sm) return siri(req, env, url, sm[1], sm[2], ctx);
 
   if (req.method === 'GET' && url.pathname === '/config') return json(req, { pub: env.VAPID_PUBLIC, v: 1 });
 
@@ -211,12 +226,13 @@ async function handle(req, env) {
 }
 
 export default {
-  async fetch(req, env) {
-    try { return await handle(req, env); } catch (e) { return json(req, { ok: false, error: String(e?.message ?? e) }, 500); }
+  async fetch(req, env, ctx) {
+    try { return await handle(req, env, ctx); } catch (e) { return json(req, { ok: false, error: String(e?.message ?? e) }, 500); }
   },
 
   /** רץ כל דקה: מי שהגיע זמנו מקבל Push */
-  async scheduled(_event, env) {
+  async scheduled(_event, env, ctx) {
+    ctx.waitUntil(processAll(env).catch(() => undefined));
     const db = await loadDb(env);
     const now = Date.now();
     let dirty = false;

@@ -592,3 +592,14 @@ export async function chatTurn(turns: ChatTurn[], opts: ChatOpts = {}): Promise<
     throw e;
   }
 }
+
+/** מה שהשרת צריך כדי לנתח ארוחות כשהאפליקציה סגורה: סדר המודלים (לתמונה ולטקסט) ורמת החשיבה לכל מודל */
+export function serverModels(): { vision: string[]; text: string[]; think: Record<string, string> } {
+  const cur = get(MODEL) ?? '';
+  const vision = modelOrder(true, cur).filter(Boolean);
+  const text = modelOrder(false, cur).filter(Boolean);
+  const want = store.get().settings.ai.think;
+  const think: Record<string, string> = {};
+  for (const m of new Set([...vision, ...text])) { const l = resolveThinking(m, want); if (l && !noThink(m)) think[m] = l; }
+  return { vision, text, think };
+}

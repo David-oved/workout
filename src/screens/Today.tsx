@@ -3,7 +3,7 @@ import { Sparkles, Bell, Mic, X, Droplets, ListChecks, Minus, Settings as Cog, C
 import { CountNum } from '../ui/anim';
 import { burst, rain, confetti, floatText } from '../ui/fx';
 import { streakOf } from '../core/streak';
-import { logInbox, editInbox, chatInbox } from '../siri/prepare';
+import { InboxStrip } from './InboxCard';
 import { buildCandidates, candMacros, gapSuggestions, makeEntries, tray, trayAdd, trayClear, type Cand } from '../ui/tray';
 import { EventList } from '../ui/EventList';
 import { bridge, refreshEvents, syncWorkouts } from '../core/bridge';
@@ -87,49 +87,6 @@ function Nudges({ today }: { today: string }) {
           <button class="x" aria-label="סגור להיום" onClick={() => dismiss(n.id)}><X /></button>
         </div>
       ))}
-    </div>
-  );
-}
-
-/** ארוחה שנאמרה ל-Siri: כרטיס מוכן שהוכן ברקע. לחיצה אחת מוסיפה ליום, או "ערוך" לתיקון כמויות */
-function SiriCard({ date }: { date: string }) {
-  const items = store.use((x) => x.inbox);
-  if (!items.length) return null;
-  const it = items[0];
-  const card = it.card;
-  const slotName = store.get().settings.slots.find((x) => x.id === guessSlot())?.name ?? 'ארוחה';
-  return (
-    <div class="g siric col">
-      <div class="sr-h">
-        {it.thumb ? <img class="sr-th" src={it.thumb} alt="" /> : <Mic />}
-        <b>{it.hasImg ? 'תמונה' : 'מ-Siri'}{items.length > 1 ? ` · עוד ${items.length - 1}` : ''}</b>
-        {it.text && <span class="sr-q">״{it.text}״</span>}
-        <button class="x" aria-label="הסר" onClick={() => actions.dismissInbox(it.id)}><X /></button>
-      </div>
-      {(!it.status || it.status === 'busy') && <div class="sr-busy"><RefreshCw class="spin" />מכין את הכרטיס…</div>}
-      {it.status === 'ready' && card && (
-        <>
-          <div class="sr-l">
-            {card.lines.slice(0, 5).map((l, i) => <div key={i}><span>{l.name}<small>{l.label}</small></span><b class="num">{l.k}</b></div>)}
-            {card.lines.length > 5 && <div class="mu"><span>ועוד {card.lines.length - 5}</span></div>}
-          </div>
-          <div class="sr-t num"><b>{card.k}</b> קל׳ · <b>{card.p}</b> ג׳ חלבון<i>{card.src === 'ai' ? 'AI' : 'מהמאגר'}</i></div>
-          <div class="sr-a">
-            <button class="btn primary sm" onClick={() => logInbox(it, date)}><Check />הוסף ל{slotName}</button>
-            <button class="btn sm" onClick={() => editInbox(it, date)}>ערוך</button>
-          </div>
-        </>
-      )}
-      {it.status === 'fail' && (
-        <>
-          <div class="mu" style={{ fontSize: 13, lineHeight: 1.5 }}>{it.failWhy ?? 'לא הצלחתי להבין לבד, אפשר לפתוח בהוספה.'}</div>
-          <div class="sr-a">
-            {it.hasImg
-              ? <button class="btn primary sm" onClick={() => void chatInbox(it, date)}>דבר על זה בצ׳אט</button>
-              : <button class="btn primary sm" onClick={() => editInbox(it, date)}>פתח בהוספה</button>}
-          </div>
-        </>
-      )}
     </div>
   );
 }
@@ -404,7 +361,7 @@ export function TodayScreen() {
       {heroEl(false)}
       {macrosEl(false)}
 
-      <SiriCard date={date} />
+      <InboxStrip />
       {date === today && <Nudges today={today} />}
       {date === today && <Ideas date={date} today={today} />}
 
@@ -489,7 +446,7 @@ export function TodayScreen() {
         <div class="gl-mid">
           {heroEl(true)}
           {macrosEl(true)}
-          <SiriCard date={date} />
+          <InboxStrip />
           <button class="btn primary block gl-add" onClick={() => openAdd(undefined, date)}><Plus />הוסף ארוחה</button>
         </div>
         <button class="gl-pull" onClick={openNormal} aria-label="הצג את כל היום"><i class="mb-h" /><ChevronUp /><small>החלק למעלה לכל היום</small></button>

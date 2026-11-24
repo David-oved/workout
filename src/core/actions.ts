@@ -4,6 +4,11 @@ import type { Plan, Session, Dish, Entry, Food, FoodEdit, CustomFood, Routine, S
 import { addDays, todayKey, uid } from './dates';
 import { ensureWorkouts } from './state';
 
+/** פריטים שאושרו או הוסרו: אם עדיין יושבים בשרת (בתור), הסנכרון מתעלם מהם ומאשר אותם */
+const GONE = 'wo:inbox-gone';
+export const readGone = (): Set<string> => { try { return new Set(JSON.parse(localStorage.getItem(GONE) ?? '[]')); } catch { return new Set(); } };
+function markGone(id: string) { try { localStorage.setItem(GONE, JSON.stringify([...readGone(), id].slice(-200))); } catch { /* ignore */ } }
+
 /**
  * כל שינוי נתונים באפליקציה עובר דרך הפעולות האלה (גם ה-UI וגם, בעתיד, ה-AI דרך src/ai/tools.ts).
  * כך יש מקום אחד ללוגיקה ואפשר לבטל כל פעולה.
@@ -130,6 +135,7 @@ export const actions = {
   },
   dismissInbox(id: string) {
     void del('wo:inbox-img:' + id).catch(() => undefined);
+    markGone(id);
     update((s) => ({ ...s, inbox: s.inbox.filter((x) => x.id !== id) }));
   },
   saveSettings(patch: Partial<Settings>) {

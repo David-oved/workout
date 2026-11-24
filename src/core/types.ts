@@ -123,7 +123,7 @@ export interface Settings {
 export interface InboxLine { name: string; label: string; k: number }
 /** כרטיס ארוחה מוכן שהאפליקציה הכינה מראש מהטקסט של Siri */
 export interface InboxCard { src: 'db' | 'ai'; items: TItem[]; lines: InboxLine[]; k: number; p: number; c: number; f: number; note?: string }
-export interface InboxItem { id: string; text: string; ts: number; status?: 'busy' | 'ready' | 'fail'; card?: InboxCard; hasImg?: boolean; thumb?: string; failWhy?: string }
+export interface InboxItem { id: string; text: string; ts: number; status?: 'queued' | 'busy' | 'ready' | 'fail'; card?: InboxCard; hasImg?: boolean; thumb?: string; failWhy?: string; srv?: boolean; tries?: number; retryAt?: number; slot?: string }
 
 export interface State {
   schema: number;
