@@ -3,6 +3,7 @@ import { Sparkles, Bell, Mic, X, Droplets, ListChecks, Minus, Settings as Cog, C
 import { CountNum } from '../ui/anim';
 import { burst, rain, confetti, floatText } from '../ui/fx';
 import { streakOf } from '../core/streak';
+import { logInbox, editInbox } from '../siri/prepare';
 import { buildCandidates, candMacros, gapSuggestions, makeEntries, tray, trayAdd, trayClear, type Cand } from '../ui/tray';
 import { EventList } from '../ui/EventList';
 import { bridge, refreshEvents, syncWorkouts } from '../core/bridge';
@@ -11,7 +12,7 @@ import { store } from '../core/state';
 import { actions } from '../core/actions';
 import { dayInfo, fmt } from '../core/calc';
 import { DAY_NAMES, addDays, dayLabel, dayMonth, dow, todayKey } from '../core/dates';
-import { ui, setUi, openAdd, toast } from '../ui/ui';
+import { ui, setUi, openAdd, toast, guessSlot } from '../ui/ui';
 import { Ring } from '../ui/components';
 import { label } from '../core/meal';
 import { nudgesFor, type Nudge } from '../core/reminders';
@@ -88,17 +89,41 @@ function Nudges({ today }: { today: string }) {
   );
 }
 
-/** ארוחה שנאמרה ל-Siri ומחכה לאישור: לחיצה פותחת את ההוספה והניתוח מתחיל מיד */
+/** ארוחה שנאמרה ל-Siri: כרטיס מוכן שהוכן ברקע. לחיצה אחת מוסיפה ליום, או "ערוך" לתיקון כמויות */
 function SiriCard({ date }: { date: string }) {
   const items = store.use((x) => x.inbox);
   if (!items.length) return null;
   const it = items[0];
+  const card = it.card;
+  const slotName = store.get().settings.slots.find((x) => x.id === guessSlot())?.name ?? 'ארוחה';
   return (
-    <div class="g siric">
-      <Mic />
-      <div class="tx"><b>מ-Siri{items.length > 1 ? ` · עוד ${items.length - 1}` : ''}</b><span>{it.text}</span></div>
-      <button class="go" onClick={() => { actions.dismissInbox(it.id); openAdd(undefined, date, null, it.text); }}>הוסף</button>
-      <button class="x" aria-label="הסר" onClick={() => actions.dismissInbox(it.id)}><X /></button>
+    <div class="g siric col">
+      <div class="sr-h">
+        <Mic />
+        <b>מ-Siri{items.length > 1 ? ` · עוד ${items.length - 1}` : ''}</b>
+        <span class="sr-q">״{it.text}״</span>
+        <button class="x" aria-label="הסר" onClick={() => actions.dismissInbox(it.id)}><X /></button>
+      </div>
+      {(!it.status || it.status === 'busy') && <div class="sr-busy"><RefreshCw class="spin" />מכין את הכרטיס…</div>}
+      {it.status === 'ready' && card && (
+        <>
+          <div class="sr-l">
+            {card.lines.slice(0, 5).map((l, i) => <div key={i}><span>{l.name}<small>{l.label}</small></span><b class="num">{l.k}</b></div>)}
+            {card.lines.length > 5 && <div class="mu"><span>ועוד {card.lines.length - 5}</span></div>}
+          </div>
+          <div class="sr-t num"><b>{card.k}</b> קל׳ · <b>{card.p}</b> ג׳ חלבון<i>{card.src === 'ai' ? 'AI' : 'מהמאגר'}</i></div>
+          <div class="sr-a">
+            <button class="btn primary sm" onClick={() => logInbox(it, date)}><Check />הוסף ל{slotName}</button>
+            <button class="btn sm" onClick={() => editInbox(it, date)}>ערוך</button>
+          </div>
+        </>
+      )}
+      {it.status === 'fail' && (
+        <>
+          <div class="mu" style={{ fontSize: 13 }}>לא הצלחתי להבין לבד, אפשר לפתוח בהוספה.</div>
+          <div class="sr-a"><button class="btn primary sm" onClick={() => editInbox(it, date)}>פתח בהוספה</button></div>
+        </>
+      )}
     </div>
   );
 }
@@ -286,10 +311,12 @@ export function TodayScreen() {
       </div>
     </div>
   );
+  // כשיש כרטיס Siri במבט המהיר, המדדים מצטמצמים כדי שהכל ייכנס במסך
+  const roomy = !s.inbox.length;
   const heroEl = (big: boolean) => (
-    <div class={'g hero' + (big ? ' v' : '') + (left < 0 ? ' over' : '')}>
+    <div class={'g hero' + (big && roomy ? ' v' : '') + (left < 0 ? ' over' : '')}>
       <div class="hrw" ref={big ? undefined : ringRef} onClick={tapRing}>
-        <Ring size={big ? 200 : 150} stroke={big ? 15 : 12} pct={eaten.k / target.k} color={left < 0 ? 'var(--warn)' : 'var(--accent)'}>
+        <Ring size={big && roomy ? 200 : 150} stroke={big && roomy ? 15 : 12} pct={eaten.k / target.k} color={left < 0 ? 'var(--warn)' : 'var(--accent)'}>
           <div class="rc">
             <div class="big num"><CountNum v={Math.abs(left)} /></div>
             <div class="mu">{left < 0 ? 'קלוריות מעל היעד' : 'קלוריות נשארו'}</div>
@@ -409,7 +436,7 @@ export function TodayScreen() {
         </button>
       )}
     </section>
-    <div class={'glance' + (glance ? '' : ' off') + (tab === 'today' ? '' : ' hid')} ref={gl} onTouchStart={gStart as never} onTouchMove={gMove as never} onTouchEnd={gEnd} onTouchCancel={gEnd} aria-label="מבט מהיר">
+    <div class={'glance' + (glance ? '' : ' off') + (tab === 'today' ? '' : ' hid') + (s.inbox.length ? ' hc' : '')} ref={gl} onTouchStart={gStart as never} onTouchMove={gMove as never} onTouchEnd={gEnd} onTouchCancel={gEnd} aria-label="מבט מהיר">
       <div class="gl-in" ref={gIn}>
         {hdEl(true)}
         <div class="gl-mid">

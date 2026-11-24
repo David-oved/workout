@@ -1,3 +1,5 @@
+import type { TItem } from '../ui/tray';
+
 export interface Macros { k: number; p: number; c: number; f: number }
 export type Place = 'dorm' | 'home';
 export type TargetKey = 'dorm-rest' | 'dorm-train' | 'home-rest' | 'home-train';
@@ -118,7 +120,10 @@ export interface Settings {
 }
 
 /** ארוחה שנאמרה ל-Siri ומחכה לאישור באפליקציה */
-export interface InboxItem { id: string; text: string; ts: number }
+export interface InboxLine { name: string; label: string; k: number }
+/** כרטיס ארוחה מוכן שהאפליקציה הכינה מראש מהטקסט של Siri */
+export interface InboxCard { src: 'db' | 'ai'; items: TItem[]; lines: InboxLine[]; k: number; p: number; c: number; f: number; note?: string }
+export interface InboxItem { id: string; text: string; ts: number; status?: 'busy' | 'ready' | 'fail'; card?: InboxCard }
 
 export interface State {
   schema: number;

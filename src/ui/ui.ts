@@ -1,4 +1,5 @@
 import { createStore } from '../core/store';
+import type { TItem } from './tray';
 import { store } from '../core/state';
 import { todayKey } from '../core/dates';
 
@@ -25,6 +26,7 @@ export interface Ui {
   glance: boolean;
   stat: 'k' | 'p' | 'c' | 'f' | null; // פירוט מדד
   addText: string | null; // טקסט שנשלח אוטומטית כשמסך ההוספה נפתח (למשל מ-Siri)
+  addTray: TItem[] | null; // פריטים שנכנסים למגש כשמסך ההוספה נפתח (כרטיס מוכן שרוצים לערוך)
 }
 
 const reset = store.get().settings.resetHour;
@@ -47,6 +49,7 @@ export const ui = createStore<Ui>({
   glance: true,
   stat: null,
   addText: null,
+  addTray: null,
 });
 
 export const setUi = (patch: Partial<Ui>) => ui.set((s) => ({ ...s, ...patch }));
@@ -75,6 +78,6 @@ export function toast(msg: string, undo?: () => void) {
   toastTimer = window.setTimeout(() => ui.set((s) => (s.toast?.id === id ? { ...s, toast: null } : s)), 4200);
 }
 
-export function openAdd(slot?: string, date?: string, view: 'chat' | null = null, text?: string) {
-  setUi({ addOpen: true, addSlot: slot ?? guessSlot(), addDate: date ?? ui.get().date, addView: view, addText: text ?? null });
+export function openAdd(slot?: string, date?: string, view: 'chat' | null = null, text?: string, trayItems?: TItem[]) {
+  setUi({ addOpen: true, addSlot: slot ?? guessSlot(), addDate: date ?? ui.get().date, addView: view, addText: text ?? null, addTray: trayItems ?? null });
 }

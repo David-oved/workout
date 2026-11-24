@@ -70,6 +70,8 @@ export function AddScreen() {
     setPropMsg(null); setQ(''); setAlt({}); setFiles([]); setOpenRow(null); setSlotOpen(false); setMore(false); setSheet(null); setErr(''); setEditTiles(false); setTrayOpen(true);
     setView(addView === 'chat' || draftOf(chat.get().messages) ? 'chat' : 'tiles');
     // טקסט שהגיע מ-Siri: ה-AI מנתח אותו מיד, ובלי AI הוא נכנס לחיפוש החכם
+    const trItems = ui.get().addTray;
+    if (trItems?.length) { tray.set((s) => ({ ...s, items: trItems })); setUi({ addTray: null }); }
     const pre = ui.get().addText;
     if (pre) {
       setUi({ addText: null });

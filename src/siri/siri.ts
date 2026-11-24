@@ -2,6 +2,8 @@ import { createStore } from '../core/store';
 import { actions } from '../core/actions';
 import { PUSH_URL } from '../push/config';
 import { toast } from '../ui/ui';
+import { store } from '../core/state';
+import { prepareInbox } from './prepare';
 
 /**
  * Siri / אפליקציית קיצורים: הקיצור שולח טקסט מוכתב ל-Worker, והאפליקציה מושכת אותו ומציגה כרטיס לאישור.
@@ -60,12 +62,15 @@ export async function syncInbox() {
     const items = (j.items ?? []).filter((x) => x && typeof x.id === 'string' && typeof x.text === 'string');
     if (!items.length) return;
     actions.addInbox(items);
+    for (const it of items) { const cur = store.get().inbox.find((x) => x.id === it.id); if (cur && !cur.status) void prepareInbox(cur); }
     await fetch(`${base()}/ack`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids: items.map((x) => x.id) }) });
   } catch { /* אין רשת: ננסה שוב */ } finally { syncing = false; }
 }
 
 export function startSiri() {
   void syncInbox();
+  // ארוחות שהניתוח שלהן נקטע (האפליקציה נסגרה באמצע): ממשיכים
+  for (const it of store.get().inbox) if (!it.status || it.status === 'busy') void prepareInbox(it);
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') void syncInbox(); });
   setInterval(() => { if (document.visibilityState === 'visible') void syncInbox(); }, 45_000);
 }

@@ -60,7 +60,9 @@ function findFood(name: string, s: State): { food?: FoodRec; dish?: Dish; alts: 
 }
 
 export function parseMeal(text: string, s: State): Parsed[] {
-  const segs = text
+  // מילות ליווי של דיבור ("אכלתי", "שתיתי", "היום בבוקר") לא חלק מהמזון
+  const spoken = text.replace(/(^|\s)(אכלתי|שתיתי|לקחתי|אכלנו|שתינו|היה לי|היו לי|הרגע|היום|בבוקר|בצהריים|בערב|קודם|עכשיו)(?=\s|$)/g, ' ');
+  const segs = spoken
     .replace(/(\d+(?:\.\d+)?)/g, ' $1 ')
     .split(/\s*[,;\n+]\s*|\s+ו(?=[א-ת])|\s+עם\s+|\s+ועוד\s+/)
     .map((x) => x.trim())

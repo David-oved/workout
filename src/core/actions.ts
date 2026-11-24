@@ -1,5 +1,5 @@
 import { update } from './state';
-import type { Plan, Session, Dish, Entry, Food, FoodEdit, CustomFood, Routine, Settings, Workout, WorkoutStatus } from './types';
+import type { Plan, Session, Dish, Entry, Food, FoodEdit, CustomFood, Routine, Settings, Workout, WorkoutStatus, InboxItem } from './types';
 import { addDays, todayKey, uid } from './dates';
 import { ensureWorkouts } from './state';
 
@@ -117,7 +117,10 @@ export const actions = {
     update((s) => ({ ...s, weights: [...s.weights.filter((w) => w.date !== date), { date, kg }].sort((a, b) => a.date.localeCompare(b.date)) }));
   },
 
-  addInbox(items: { id: string; text: string; ts: number }[]) {
+  patchInbox(id: string, patch: Partial<InboxItem>) {
+    update((s) => ({ ...s, inbox: s.inbox.map((x) => (x.id === id ? { ...x, ...patch } : x)) }));
+  },
+  addInbox(items: InboxItem[]) {
     update((s) => {
       const have = new Set(s.inbox.map((x) => x.id));
       const fresh = items.filter((x) => !have.has(x.id));
