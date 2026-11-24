@@ -49,8 +49,10 @@ const trayOf = (list: AiItem[]): TItem[] =>
   }));
 
 /** תוצאה שהשרת הכין: כרטיס מוכן, או הסבר של ה-AI למה אי אפשר */
-export function applyServerResult(it: InboxItem, res: { items: AiItem[]; reply?: string }) {
-  if (res.items?.length) patch(it.id, { status: 'ready', srv: false, tries: undefined, retryAt: undefined, failWhy: undefined, card: { ...cardOf(trayOf(res.items), 'ai'), note: res.reply } });
+const validSlot = (id?: string) => (id && store.get().settings.slots.some((x) => x.id === id) ? id : undefined);
+
+export function applyServerResult(it: InboxItem, res: { items: AiItem[]; reply?: string; slot?: string }) {
+  if (res.items?.length) patch(it.id, { slot: it.slot ?? validSlot(res.slot), status: 'ready', srv: false, tries: undefined, retryAt: undefined, failWhy: undefined, card: { ...cardOf(trayOf(res.items), 'ai'), note: res.reply } });
   else patch(it.id, { status: 'fail', srv: false, tries: undefined, retryAt: undefined, failWhy: res.reply || (it.hasImg ? 'לא הצלחתי לזהות מה בתמונה' : 'לא הצלחתי להבין לבד') });
 }
 
@@ -75,7 +77,7 @@ async function attemptImage(it: InboxItem): Promise<Out> {
   const text = `${ask}\n\n${PHOTO_HINT}${hints ? `\n\n${hints}` : ''}\n\n${sentAtBlock(it.ts)}\n\n${buildAppData(today)}`;
   try {
     const res = await chatTurn([{ role: 'user', text, images: [img] }], {});
-    applyServerResult(it, { items: res.items, reply: res.reply });
+    applyServerResult(it, { items: res.items, reply: res.reply, slot: res.slot });
     return 'done';
   } catch (e) {
     if (transient(e)) return { retry: (e as Error).message || 'תקלה זמנית' };
@@ -93,7 +95,7 @@ async function attemptText(it: InboxItem, last: boolean): Promise<Out> {
       const text = `${it.text}${hints ? `\n\n${hints}` : ''}\n\n${sentAtBlock(it.ts)}\n\n${buildAppData(today)}`;
       const res = await chatTurn([{ role: 'user', text }], {});
       if (res.items.length) {
-        patch(it.id, { status: 'ready', srv: false, tries: undefined, retryAt: undefined, failWhy: undefined, card: { ...cardOf(trayOf(res.items), 'ai'), note: res.reply } });
+        patch(it.id, { slot: it.slot ?? validSlot(res.slot), status: 'ready', srv: false, tries: undefined, retryAt: undefined, failWhy: undefined, card: { ...cardOf(trayOf(res.items), 'ai'), note: res.reply } });
         return 'done';
       }
     } catch (e) {

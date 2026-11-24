@@ -29,7 +29,7 @@ export interface AiProduct {
   note?: string;
   url?: string;
 }
-export interface AiResult { reply: string; items: AiItem[]; products: AiProduct[]; memory: string[]; suggestions: string[]; clearCard?: boolean; fallback?: boolean }
+export interface AiResult { reply: string; items: AiItem[]; products: AiProduct[]; memory: string[]; suggestions: string[]; clearCard?: boolean; slot?: string; fallback?: boolean }
 export interface Source { title: string; uri: string }
 
 export const SYSTEM_PROMPT = `You are "workOut Coach": a personal sports-nutrition, bulking and training coach inside a private app, talking to ONE user: a 17-year-old Israeli guy who is building muscle (gaining weight on purpose) and trains about 3 times a week. You talk to him in Hebrew, casual, direct and warm, like a knowledgeable older training partner who studied sports nutrition. Short messages, no lectures, no filler.
@@ -46,7 +46,7 @@ SAFETY (he is a minor)
 - For teenagers keep the calorie surplus modest and food-first. Do not invent numbers or studies. Separate clearly: well established / likely / uncertain.
 
 REPLY FORMAT: return ONE JSON object only, no text around it, exactly this shape:
-{"items":[{"name":"שם בעברית","count":number,"unitGrams":number,"grams":number,"kcal100":number,"p100":number,"c100":number,"f100":number,"confidence":"high"|"medium"|"low","source":"label"|"known"|"estimate","note":"optional very short Hebrew note"}],"products":[{"name":"שם בעברית","brand":"optional","kcal100":number,"p100":number,"c100":number,"f100":number,"unitLabel":"יחידה","unitGrams":number,"source":"label"|"web"|"estimate","note":"optional very short Hebrew note","url":"optional page you used"}],"reply":"Hebrew message","clearCard":false,"memory":["optional short durable fact"],"suggestions":["optional short follow-up he may tap"]}
+{"items":[{"name":"שם בעברית","count":number,"unitGrams":number,"grams":number,"kcal100":number,"p100":number,"c100":number,"f100":number,"confidence":"high"|"medium"|"low","source":"label"|"known"|"estimate","note":"optional very short Hebrew note"}],"products":[{"name":"שם בעברית","brand":"optional","kcal100":number,"p100":number,"c100":number,"f100":number,"unitLabel":"יחידה","unitGrams":number,"source":"label"|"web"|"estimate","note":"optional very short Hebrew note","url":"optional page you used"}],"reply":"Hebrew message","slot":"slot id","clearCard":false,"memory":["optional short durable fact"],"suggestions":["optional short follow-up he may tap"]}
 
 KEY ORDER MATTERS: write the keys in exactly this order: "items" first, then "products", then "reply". The app streams "reply" to him while you write it, so the meal card must already be complete and final before you start the reply, and the reply must describe exactly that card (same totals).
 
@@ -74,6 +74,9 @@ Rules for "items" (the meal card):
 - Prefer values of the Israeli Ministry of Health food database (Tzameret) for Israeli foods and products when you know them; use the printed label when a photo is provided.
 - A message may contain "[CARD EDITED BY USER]" followed by the card as he edited it by hand. Treat it as the truth.
 - When the card is ready, "reply" gives a one-line summary with total calories and protein.
+
+Rules for "slot" (which meal of the day the card belongs to):
+- When "items" is not empty, set "slot" to ONE id from [MEAL SLOTS] (for example "breakfast"). Choose by the time he ate (use [NOW]: for something he already ate or sent earlier, use the time it says it was sent) AND by the food itself: a protein shake, a fruit, a bar or a small bite alone is a "snack" even at lunchtime; eggs, bread, cereal or a sandwich in the morning is breakfast; a full plate with meat, rice or pasta at midday is lunch; the evening full meal is dinner. If he says which meal ("לארוחת ערב"), use that. Use "" when "items" is empty.
 
 Rules for "memory": only durable facts he stated or clearly showed that will help later (allergies, dislikes, injuries, schedule, goals, what foods are available at the dorm, what worked for him). Short, in Hebrew, at most 2 per reply. Never save sensitive medical details unless he explicitly asks you to remember them. Do not repeat anything already in [MEMORY].
 Rules for "suggestions": up to 3 very short Hebrew follow-ups he might want next (or [] if none).
@@ -186,7 +189,7 @@ export function parseAiJson(raw: string, makeId: () => string): AiResult {
   }
   const reply = String(j?.reply ?? j?.question ?? j?.summary ?? '').trim();
   if (!items.length && !products.length && !reply) throw new Error('לא התקבלה תשובה שימושית. נסה לנסח אחרת');
-  return { reply, items, products, memory: strs(j.memory, 2, 140), suggestions: strs(j.suggestions, 3, 60), clearCard: j.clearCard === true };
+  return { reply, items, products, memory: strs(j.memory, 2, 140), suggestions: strs(j.suggestions, 3, 60), clearCard: j.clearCard === true, slot: typeof j.slot === 'string' && j.slot.trim() ? j.slot.trim().slice(0, 24) : undefined };
 }
 
 /** פריט שמחבר כמה מזונות ("ביצים ולחם", "אורז ועוף"): אסור, ואז מבקשים מה-AI לפרק */

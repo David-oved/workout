@@ -88,6 +88,15 @@ export function AddScreen() {
 
   // המגש: פריטים ידניים + הארוחה שה-AI בנה
   const draft = draftOf(ch.messages);
+  // ה-AI מציע לאיזו ארוחה הכרטיס שייך. מיישמים פעם אחת לכל כרטיס, ולא דורסים בחירה ידנית שלך
+  const aiSlot = useRef<{ id?: string; slot?: string }>({});
+  useEffect(() => {
+    if (!draft?.slot || aiSlot.current.id === draft.id) return;
+    const valid = store.get().settings.slots.some((x) => x.id === draft.slot);
+    const cur = ui.get().addSlot;
+    if (valid && (aiSlot.current.slot === undefined || cur === aiSlot.current.slot)) setUi({ addSlot: draft.slot });
+    aiSlot.current = { id: draft.id, slot: valid ? draft.slot : cur };
+  }, [draft?.id]);
   const aiItems: TItem[] = (draft?.items ?? []).map((it) => ({
     id: it.id, name: it.name, unit: 'g', amount: it.grams, step: 10, base: 100,
     per: { k: it.kcal100, p: it.p100, c: it.c100, f: it.f100 }, est: it.source === 'estimate', src: 'ai', msgId: draft!.id, conf: it.confidence,

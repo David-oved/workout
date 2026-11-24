@@ -34,6 +34,7 @@ export interface Msg {
   sources?: Source[];
   remembered?: string[];
   suggestions?: string[];
+  slot?: string; // הארוחה שה-AI הציע לכרטיס (בוקר, צהריים...)
   webFailed?: boolean;
   products?: ProdProp[]; // הצעות למוצרים חדשים, מחכות לאישור שלך
   hint?: string; // הנחיה נסתרת שנשלחת ל-AI עם ההודעה (לא מוצגת)
@@ -268,6 +269,7 @@ async function runTurn() {
         sources: res.sources.length ? res.sources : undefined,
         memoryAsk: memoryAsk.length ? memoryAsk : undefined,
         suggestions: res.suggestions.length ? res.suggestions : undefined,
+        slot: res.items.length ? res.slot : undefined,
         webFailed: res.webFailed || undefined,
         products: res.products.length ? res.products.map((p) => ({ ...p, status: 'pending' as const })) : undefined,
       };

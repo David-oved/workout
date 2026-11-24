@@ -93,7 +93,7 @@ async function runOne(env, cfg, t, it, timeoutMs) {
         let res;
         try { res = parseAiJson(r.text, () => crypto.randomUUID().replace(/-/g, '').slice(0, 8)); } catch (e) { lastErr = String(e?.message ?? e); continue; }
         if (res.fallback && v.json) { lastErr = 'התשובה לא הייתה JSON'; continue; }
-        return { st: 'ok', n, err: undefined, res: { items: res.items, reply: res.reply } };
+        return { st: 'ok', n, err: undefined, res: { items: res.items, reply: res.reply, slot: res.slot } };
       }
       lastErr = `${model}: ${r.status} ${r.raw}`.slice(0, 160);
       if (r.kind === 'key') { permanent = 'מפתח ה-Gemini לא תקין או נחסם'; break; }

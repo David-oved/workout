@@ -15,6 +15,8 @@ export function buildAppData(date: string): string {
   const info = dayInfo(s, date);
   const out: string[] = [];
 
+  out.push('[MEAL SLOTS] (use these ids in "slot")');
+  out.push(s.settings.slots.map((x) => `${x.id} = ${x.name} (usually around ${x.time})`).join('; ') + '.');
   out.push('[TODAY SO FAR]');
   out.push(`date ${date} (${DAY_NAMES[dow(date)]}); location ${info.place === 'dorm' ? 'dorm' : 'home'}; training ${info.training ? 'yes' : 'no'}.`);
   out.push(`eaten: ${info.eaten.k} kcal, protein ${info.eaten.p}g, carbs ${info.eaten.c}g, fat ${info.eaten.f}g. Targets today: ${info.target.k} kcal, protein ${info.target.p}g, carbs ${info.target.c}g, fat ${info.target.f}g.`);
