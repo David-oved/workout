@@ -76,13 +76,23 @@ async function siri(req, env, url, token, action) {
   if (action === 'add' || action === 'photo') {
     let t = url.searchParams.get('t') ?? url.searchParams.get('text') ?? '';
     let img = null; // { buf, mime }
+    const seen = []; // מה הגיע בפועל (לאבחון)
+    const ctype = req.headers.get('Content-Type') || '';
     if (req.method === 'POST') {
       const ct = req.headers.get('Content-Type') || '';
       if (ct.includes('multipart/form-data')) {
         const fd = await req.formData();
         t = String(fd.get('text') ?? fd.get('t') ?? t);
-        for (const [, v] of fd.entries()) {
-          if (v && typeof v === 'object' && typeof v.arrayBuffer === 'function') { img = { buf: await v.arrayBuffer(), mime: v.type || 'image/jpeg' }; break; }
+        for (const [k, v] of fd.entries()) {
+          if (v && typeof v === 'object' && typeof v.arrayBuffer === 'function') {
+            seen.push(`${k}=קובץ(${v.type || '?'},${v.size})`);
+            if (!img) img = { buf: await v.arrayBuffer(), mime: v.type || 'image/jpeg' };
+          } else {
+            const str = String(v);
+            seen.push(`${k}=טקסט(${str.length})`);
+            // תמונה שהגיעה כטקסט base64 (או data URL)
+            if (!img && str.length > 1000 && /^(data:[^,]*,)?[A-Za-z0-9+/= \r\n]+$/.test(str)) img = { buf: fromB64(str.replace(/^data:[^,]*,/, '').replace(/[\r\n]/g, '').replace(/ /g, '+')), mime: 'image/jpeg' };
+          }
         }
       } else if (ct.startsWith('image/')) {
         img = { buf: await req.arrayBuffer(), mime: ct.split(';')[0] };
@@ -96,7 +106,15 @@ async function siri(req, env, url, token, action) {
             if (typeof b64 === 'string' && b64.length > 100) img = { buf: fromB64(b64.replace(/^data:[^,]*,/, '')), mime: String(j.mime ?? 'image/jpeg') };
           } catch { t = t || raw; }
         }
-        else if (ct.includes('x-www-form-urlencoded')) { const p = new URLSearchParams(raw); t = p.get('text') ?? p.get('t') ?? t; }
+        else if (ct.includes('x-www-form-urlencoded')) {
+          const p = new URLSearchParams(raw);
+          t = p.get('text') ?? p.get('t') ?? t;
+          for (const [k, v] of p.entries()) {
+            seen.push(`${k}=טקסט(${v.length})`);
+            // תמונה שנשלחה בתוך טופס רגיל כ-base64 (או data URL)
+            if (!img && v.length > 1000 && /^(data:[^,]*,)?[A-Za-z0-9+/= \r\n_-]+$/.test(v)) img = { buf: fromB64(v.replace(/^data:[^,]*,/, '').replace(/[\r\n]/g, '').replace(/ /g, '+').replace(/-/g, '+').replace(/_/g, '/')), mime: 'image/jpeg' };
+          }
+        }
         else t = t || raw;
       }
     }
@@ -104,6 +122,7 @@ async function siri(req, env, url, token, action) {
     if (img && img.buf.byteLength > MAX_IMG) return new Response('התמונה גדולה מדי', { status: 413, headers: { ...TXT, ...cors(req) } });
     if (img && !String(img.mime).startsWith('image/')) img.mime = 'image/jpeg';
     if (img && img.buf.byteLength < 200) img = null;
+    console.log('siri add', ctype, JSON.stringify(seen), 'img:', !!img);
     if (!t && !img) return new Response('לא התקבל טקסט או תמונה', { status: 400, headers: { ...TXT, ...cors(req) } });
     const list = await loadInbox(env, token);
     const id = crypto.randomUUID().replace(/-/g, '').slice(0, 12);
@@ -114,7 +133,7 @@ async function siri(req, env, url, token, action) {
     }
     list.push(item);
     await env.SUBS.put(inboxKey(token), JSON.stringify(list.slice(-20)), { expirationTtl: 14 * 86400 });
-    return new Response(img ? 'התמונה נרשמה ✓' : 'נרשם ✓', { headers: { ...TXT, ...cors(req) } });
+    return new Response(img ? 'התמונה נרשמה ✓' : action === 'photo' ? `נרשם ✓ אבל בלי תמונה. הגיע: ${seen.join(' ') || ctype || 'כלום'}` : 'נרשם ✓', { headers: { ...TXT, ...cors(req) } });
   }
   if (action.startsWith('img/')) {
     const id = action.slice(4);
