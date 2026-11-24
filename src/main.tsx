@@ -9,6 +9,7 @@ import { startBridge } from './core/bridge';
 import { startPush } from './push/push';
 import { initFx } from './ui/fx';
 import { initViewportLog } from './viewportLog';
+import { startSiri } from './siri/siri';
 
 const started = performance.now();
 
@@ -23,6 +24,7 @@ async function boot() {
   startFeedSync();
   startBridge();
   startPush();
+  startSiri();
   // לחיצה על התראת "סיכום היום": נפתח הסיכום (אם האפליקציה כבר פתוחה ההודעה מגיעה מה-Service Worker)
   const openSummary = () => setUi({ tab: 'today', summary: todayKey(store.get().settings.resetHour) });
   if (new URLSearchParams(location.search).has('summary')) { openSummary(); history.replaceState(null, '', location.pathname); }

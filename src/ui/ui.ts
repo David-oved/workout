@@ -24,6 +24,7 @@ export interface Ui {
   /** מבט מהיר: מסך היום נפתח רק עם המדדים וכפתור הוספה. מחליקים למעלה למצב רגיל */
   glance: boolean;
   stat: 'k' | 'p' | 'c' | 'f' | null; // פירוט מדד
+  addText: string | null; // טקסט שנשלח אוטומטית כשמסך ההוספה נפתח (למשל מ-Siri)
 }
 
 const reset = store.get().settings.resetHour;
@@ -45,6 +46,7 @@ export const ui = createStore<Ui>({
   toast: null,
   glance: true,
   stat: null,
+  addText: null,
 });
 
 export const setUi = (patch: Partial<Ui>) => ui.set((s) => ({ ...s, ...patch }));
@@ -73,6 +75,6 @@ export function toast(msg: string, undo?: () => void) {
   toastTimer = window.setTimeout(() => ui.set((s) => (s.toast?.id === id ? { ...s, toast: null } : s)), 4200);
 }
 
-export function openAdd(slot?: string, date?: string, view: 'chat' | null = null) {
-  setUi({ addOpen: true, addSlot: slot ?? guessSlot(), addDate: date ?? ui.get().date, addView: view });
+export function openAdd(slot?: string, date?: string, view: 'chat' | null = null, text?: string) {
+  setUi({ addOpen: true, addSlot: slot ?? guessSlot(), addDate: date ?? ui.get().date, addView: view, addText: text ?? null });
 }

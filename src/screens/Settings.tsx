@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import type { ComponentChildren } from 'preact';
-import { X, ChevronLeft, ChevronRight, User, Target, CalendarDays, CalendarPlus, Copy, Sparkles, Utensils, Sunrise, Download, Upload, RefreshCw, Plus, Minus, Trash, Info, Dumbbell, Bell } from 'lucide-preact';
+import { X, Mic, ChevronLeft, ChevronRight, User, Target, CalendarDays, CalendarPlus, Copy, Sparkles, Utensils, Sunrise, Download, Upload, RefreshCw, Plus, Minus, Trash, Info, Dumbbell, Bell } from 'lucide-preact';
 import { store, update, defaultState } from '../core/state';
 import { actions } from '../core/actions';
 import { fmt, suggestTargets } from '../core/calc';
@@ -17,12 +17,13 @@ import { feedState, feedUrl, webcalUrl, hasToken, verifyToken, saveToken, enable
 import { FullScreen, Sheet } from '../ui/components';
 import { exportBackup, importBackup } from '../core/backup';
 import { clearLog, fmtSnap, readLog, snapshot } from '../viewportLog';
+import { siri, enableSiri, disableSiri, rotateSiri, siriUrl, testSiri } from '../siri/siri';
 import { APP_VERSION, BUILD_ID, updater, checkForUpdate, applyUpdate } from '../update/updater';
 import type { Macros, Profile, TargetKey } from '../core/types';
 
-type Page = 'home' | 'profile' | 'targets' | 'week' | 'meals' | 'start' | 'backup' | 'updates' | 'calendar' | 'gcal' | 'ai' | 'aimodels' | 'aiknow' | 'remind' | 'look';
+type Page = 'home' | 'profile' | 'targets' | 'week' | 'meals' | 'start' | 'backup' | 'updates' | 'calendar' | 'gcal' | 'ai' | 'aimodels' | 'aiknow' | 'remind' | 'look' | 'siri';
 const TITLES: Record<Page, string> = {
-  look: 'מראה והתנהגות',
+  look: 'מראה והתנהגות', siri: 'Siri וקיצורים',
   home: 'הגדרות', profile: 'פרופיל', targets: 'יעדי תזונה', week: 'שבוע ואימונים', meals: 'ארוחות', start: 'תחילת יום', backup: 'גיבוי', updates: 'עדכונים', calendar: 'פיד לקריאה בלבד', gcal: 'Google Calendar', ai: 'AI תזונה', aimodels: 'מודלים וחשיבה', aiknow: 'ידע וזיכרון', remind: 'תזכורות והתראות',
 };
 const TARGETS: [TargetKey, string][] = [
@@ -88,6 +89,8 @@ function SettingsBody() {
   const [page, setPage] = useState<Page>(() => (ui.get().settingsPage as Page) || 'home');
   useEffect(() => { if (ui.get().settingsPage) setUi({ settingsPage: null }); }, []);
   const fs_ = feedState.use((x) => x);
+  const sr = siri.use((x) => x);
+  const siriOn = sr.on;
   const [tok, setTok] = useState('');
   const [busy, setBusy] = useState(false);
   const [tokErr, setTokErr] = useState('');
@@ -166,6 +169,7 @@ function SettingsBody() {
             </div>
             <div class="g rows" style={{ marginTop: 14 }}>
               <Row icon={<Sparkles />} title="מראה והתנהגות" value={`אנימציות ${set.show.fx ? 'פעילות' : 'כבויות'} · מים ${set.show.water ? 'מוצגים' : 'מוסתרים'} · מנוחה ${set.show.restSec ? set.show.restSec + ' שנ׳' : 'בלי טיימר'}`} onClick={() => setPage('look')} />
+              <Row icon={<Mic />} title="Siri וקיצורים" value={siriOn ? 'פעיל · רישום ארוחות בקול' : 'רשום ארוחה בקול, בלי לפתוח את האפליקציה'} badge={!siriOn} onClick={() => setPage('siri')} />
               <Row icon={<Bell />} title="תזכורות והתראות" value={`${Object.values(set.remind.meals).filter(Boolean).length} ארוחות${set.remind.weigh.on ? ' · שקילה' : ''}${set.remind.close.on ? ' · סגירת יום' : ''}${br.connected ? '' : ' · דורש Google Calendar'}`} badge={!br.connected} onClick={() => setPage('remind')} />
               <Row icon={<Sparkles />} title="AI תזונה (Gemini)" value={aiS.configured ? 'מחובר' : 'הערכת קלוריות מטקסט ותמונה'} badge={!aiS.configured} onClick={() => setPage('ai')} />
               <Row icon={<CalendarDays />} title="Google Calendar" value={br.connected ? `מחובר · ${br.events.length} אירועים` : 'קריאת אירועים וכתיבת אימונים'} badge={!br.connected} onClick={() => setPage('gcal')} />
@@ -181,6 +185,44 @@ function SettingsBody() {
                 toast('הכל נמחק');
               }} />
             </div>
+          </>
+        )}
+
+        {page === 'siri' && (
+          <>
+            <div class="g rows">
+              <button class="row2" onClick={() => (sr.on ? disableSiri() : enableSiri())}>
+                <span>רישום ארוחות בקול<small>אומרים ל-Siri מה אכלת, והארוחה מחכה לאישור באפליקציה.</small></span>
+                <span class={'tgl' + (sr.on ? ' on' : '')} />
+              </button>
+            </div>
+            {sr.on && (
+              <>
+                <div class="sec"><span>הכתובת האישית שלך</span></div>
+                <div class="g card">
+                  <pre class="adet" style={{ direction: 'ltr', textAlign: 'left', whiteSpace: 'pre-wrap', wordBreak: 'break-all', fontSize: 11.5, margin: 0 }}>{siriUrl()}</pre>
+                  <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
+                    <button class="btn primary sm" onClick={async () => { try { await navigator.clipboard.writeText(siriUrl()); toast('הכתובת הועתקה'); } catch { toast('ההעתקה נכשלה'); } }}>העתק כתובת</button>
+                    <button class="btn sm" disabled={sr.busy} onClick={() => void testSiri()}>שלח בדיקה</button>
+                    <button class="btn sm" onClick={() => { if (confirm('ליצור כתובת חדשה? הקיצור הישן יפסיק לעבוד.')) rotateSiri(); }}>כתובת חדשה</button>
+                  </div>
+                  {sr.msg && <div class="mu" style={{ marginTop: 8, fontSize: 12.5 }}>{sr.msg}</div>}
+                </div>
+                <div class="sec"><span>יוצרים את הקיצור (פעם אחת)</span></div>
+                <div class="g card" style={{ lineHeight: 1.7, fontSize: 14 }}>
+                  <ol style={{ margin: 0, paddingInlineStart: 20 }}>
+                    <li>פתח את אפליקציית <b>קיצורים</b> ולחץ על + לקיצור חדש.</li>
+                    <li>הוסף פעולה <b>״הכתבת טקסט״</b> (Dictate Text). בהגדרות שלה בחר שפה: עברית.</li>
+                    <li>הוסף פעולה <b>״קבל תוכן של כתובת URL״</b> (Get Contents of URL), והדבק בה את הכתובת מכאן.</li>
+                    <li>לחץ על ״הצג עוד״: שיטה <b>POST</b>, גוף הבקשה <b>JSON</b>. הוסף שדה מסוג טקסט: מפתח <b>text</b>, ערך = ״טקסט מוכתב״ (בחירה כמשתנה).</li>
+                    <li>רשות: הוסף ״הצג התראה״ עם התוצאה, כדי לראות ״נרשם ✓״.</li>
+                    <li>תן לקיצור שם, למשל <b>״רשום ארוחה״</b>. עכשיו אפשר: ״היי Siri, רשום ארוחה״.</li>
+                  </ol>
+                  <div class="mu" style={{ marginTop: 10, fontSize: 12.5, lineHeight: 1.6 }}>אם Siri שלך לא מוגדרת לעברית, תן לקיצור שם באנגלית (למשל Log meal). באייפון עם כפתור פעולה: הגדרות ← כפתור פעולה ← קיצור ← הקיצור הזה, ואז לחיצה על הכפתור פותחת הכתבה מיד.</div>
+                </div>
+                <div class="note">הטקסט עובר דרך ה-Worker שלך ב-Cloudflare ונשמר שם עד שהאפליקציה מושכת אותו (לכל היותר 14 יום). הכתובת היא סוד: מי שיש לו אותה יכול לשלוח לך ארוחות, ולכן היא נשמרת רק במכשיר ולא בגיבוי.</div>
+              </>
+            )}
           </>
         )}
 

@@ -117,6 +117,16 @@ export const actions = {
     update((s) => ({ ...s, weights: [...s.weights.filter((w) => w.date !== date), { date, kg }].sort((a, b) => a.date.localeCompare(b.date)) }));
   },
 
+  addInbox(items: { id: string; text: string; ts: number }[]) {
+    update((s) => {
+      const have = new Set(s.inbox.map((x) => x.id));
+      const fresh = items.filter((x) => !have.has(x.id));
+      return fresh.length ? { ...s, inbox: [...s.inbox, ...fresh].slice(-20) } : s;
+    });
+  },
+  dismissInbox(id: string) {
+    update((s) => ({ ...s, inbox: s.inbox.filter((x) => x.id !== id) }));
+  },
   saveSettings(patch: Partial<Settings>) {
     update((s) => ({ ...s, settings: { ...s.settings, ...patch } }));
   },

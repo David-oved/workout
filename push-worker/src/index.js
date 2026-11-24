@@ -59,9 +59,51 @@ function cors(req) {
 }
 const json = (req, data, status = 200) => new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', ...cors(req) } });
 
+const TXT = { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' };
+const inboxKey = (t) => `inbox:${t}`;
+const loadInbox = async (env, t) => { try { const s = await env.SUBS.get(inboxKey(t)); return s ? JSON.parse(s) : []; } catch { return []; } };
+
+/**
+ * תיבת דואר ל-Siri / אפליקציית קיצורים: הקיצור שולח טקסט מוכתב ל-/siri/<token>/add, והאפליקציה מושכת אותו
+ * מ-/list ומאשרת ב-/ack. ה-token הוא סוד אקראי של המשתמש (אין חשבונות). הטקסט נשמר עד 14 יום או עד שנמשך.
+ */
+async function siri(req, env, url, token, action) {
+  if (action === 'add') {
+    let t = url.searchParams.get('t') ?? url.searchParams.get('text') ?? '';
+    if (req.method === 'POST') {
+      const ct = req.headers.get('Content-Type') || '';
+      if (ct.includes('multipart/form-data')) { const fd = await req.formData(); t = String(fd.get('text') ?? fd.get('t') ?? t); }
+      else {
+        const raw = await req.text();
+        if (ct.includes('json')) { try { const j = JSON.parse(raw); t = String(j.text ?? j.t ?? t); } catch { t = t || raw; } }
+        else if (ct.includes('x-www-form-urlencoded')) { const p = new URLSearchParams(raw); t = p.get('text') ?? p.get('t') ?? t; }
+        else t = t || raw;
+      }
+    }
+    t = String(t).replace(/\s+/g, ' ').trim().slice(0, 400);
+    if (!t) return new Response('לא התקבל טקסט', { status: 400, headers: { ...TXT, ...cors(req) } });
+    const list = await loadInbox(env, token);
+    list.push({ id: crypto.randomUUID().replace(/-/g, '').slice(0, 12), text: t, ts: Date.now() });
+    await env.SUBS.put(inboxKey(token), JSON.stringify(list.slice(-20)), { expirationTtl: 14 * 86400 });
+    return new Response('נרשם ✓', { headers: { ...TXT, ...cors(req) } });
+  }
+  if (action === 'list') return json(req, { items: await loadInbox(env, token) });
+  if (action === 'ack' && req.method === 'POST') {
+    let ids = [];
+    try { const b = await req.json(); ids = Array.isArray(b.ids) ? b.ids.map(String) : []; } catch { /* ignore */ }
+    const left = (await loadInbox(env, token)).filter((x) => !ids.includes(x.id));
+    if (left.length) await env.SUBS.put(inboxKey(token), JSON.stringify(left), { expirationTtl: 14 * 86400 });
+    else await env.SUBS.delete(inboxKey(token));
+    return json(req, { ok: true, left: left.length });
+  }
+  return json(req, { ok: false, error: 'not found' }, 404);
+}
+
 async function handle(req, env) {
   const url = new URL(req.url);
   if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors(req) });
+  const sm = url.pathname.match(/^\/siri\/([A-Za-z0-9_-]{22,64})\/(add|list|ack)$/);
+  if (sm) return siri(req, env, url, sm[1], sm[2]);
 
   if (req.method === 'GET' && url.pathname === '/config') return json(req, { pub: env.VAPID_PUBLIC, v: 1 });
 

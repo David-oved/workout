@@ -69,6 +69,12 @@ export function AddScreen() {
     void loadDb();
     setPropMsg(null); setQ(''); setAlt({}); setFiles([]); setOpenRow(null); setSlotOpen(false); setMore(false); setSheet(null); setErr(''); setEditTiles(false); setTrayOpen(true);
     setView(addView === 'chat' || draftOf(chat.get().messages) ? 'chat' : 'tiles');
+    // טקסט שהגיע מ-Siri: ה-AI מנתח אותו מיד, ובלי AI הוא נכנס לחיפוש החכם
+    const pre = ui.get().addText;
+    if (pre) {
+      setUi({ addText: null });
+      setTimeout(() => { if (configured) submit(pre); else { setView('tiles'); setQ(pre); } }, 350);
+    }
   }, [open]);
 
   const today = todayKey(s.settings.resetHour);

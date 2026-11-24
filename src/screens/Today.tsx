@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
-import { Sparkles, Bell, X, Droplets, ListChecks, Minus, Settings as Cog, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, ChevronsUpDown, Maximize2, Plus, Dumbbell, Check, Copy, Download, Siren, RefreshCw } from 'lucide-preact';
+import { Sparkles, Bell, Mic, X, Droplets, ListChecks, Minus, Settings as Cog, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, ChevronsUpDown, Maximize2, Plus, Dumbbell, Check, Copy, Download, Siren, RefreshCw } from 'lucide-preact';
 import { CountNum } from '../ui/anim';
 import { burst, rain, confetti, floatText } from '../ui/fx';
 import { streakOf } from '../core/streak';
@@ -84,6 +84,21 @@ function Nudges({ today }: { today: string }) {
           <button class="x" aria-label="סגור להיום" onClick={() => dismiss(n.id)}><X /></button>
         </div>
       ))}
+    </div>
+  );
+}
+
+/** ארוחה שנאמרה ל-Siri ומחכה לאישור: לחיצה פותחת את ההוספה והניתוח מתחיל מיד */
+function SiriCard({ date }: { date: string }) {
+  const items = store.use((x) => x.inbox);
+  if (!items.length) return null;
+  const it = items[0];
+  return (
+    <div class="g siric">
+      <Mic />
+      <div class="tx"><b>מ-Siri{items.length > 1 ? ` · עוד ${items.length - 1}` : ''}</b><span>{it.text}</span></div>
+      <button class="go" onClick={() => { actions.dismissInbox(it.id); openAdd(undefined, date, null, it.text); }}>הוסף</button>
+      <button class="x" aria-label="הסר" onClick={() => actions.dismissInbox(it.id)}><X /></button>
     </div>
   );
 }
@@ -315,6 +330,7 @@ export function TodayScreen() {
       {heroEl(false)}
       {macrosEl(false)}
 
+      <SiriCard date={date} />
       {date === today && <Nudges today={today} />}
       {date === today && <Ideas date={date} today={today} />}
 
@@ -399,6 +415,7 @@ export function TodayScreen() {
         <div class="gl-mid">
           {heroEl(true)}
           {macrosEl(true)}
+          <SiriCard date={date} />
           <button class="btn primary block gl-add" onClick={() => openAdd(undefined, date)}><Plus />הוסף ארוחה</button>
         </div>
         <button class="gl-pull" onClick={openNormal} aria-label="הצג את כל היום"><i class="mb-h" /><ChevronUp /><small>החלק למעלה לכל היום</small></button>

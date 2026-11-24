@@ -117,6 +117,9 @@ export interface Settings {
   };
 }
 
+/** ארוחה שנאמרה ל-Siri ומחכה לאישור באפליקציה */
+export interface InboxItem { id: string; text: string; ts: number }
+
 export interface State {
   schema: number;
   settings: Settings;
@@ -132,6 +135,7 @@ export interface State {
   sessions: Session[];
   summaries: Record<string, { text: string; ts: number; model: string }>; // סיכומי סוף יום מה-AI לפי תאריך
   water: Record<string, number>; // מ״ל לפי תאריך
+  inbox: InboxItem[]; // הודעות שהגיעו מ-Siri
   hiddenTiles: string[]; // אריחים שהסתרת ממסך ההוספה
   meta: { createdAt: number; lastBackup?: number; onboarded?: boolean };
 }
