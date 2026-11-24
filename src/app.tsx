@@ -42,6 +42,23 @@ export function App() {
     return () => document.removeEventListener('visibilitychange', onVisible);
   }, []);
 
+  // "היום" זז לבד: ברגע שהיום מתחלף לפי שעת ההתחלה שקבעת (למשל 01:00), וגם מיד כששינית את שעת ההתחלה בהגדרות.
+  // המסך עוקב רק אם הוא הציג את "היום" הקודם, כדי לא לקפוץ מיום שבחרת לראות בכוונה
+  useEffect(() => {
+    let last = todayKey(store.get().settings.resetHour);
+    const sync = () => {
+      const t = todayKey(store.get().settings.resetHour);
+      if (t === last) return;
+      const c = ui.get();
+      setUi({ ...(c.date === last ? { date: t } : {}), ...(c.addDate === last && !c.addOpen ? { addDate: t } : {}) });
+      last = t;
+      update((s) => ensureWorkouts(s, t));
+    };
+    const off = store.subscribe(sync);
+    const id = setInterval(sync, 20_000);
+    return () => { off?.(); clearInterval(id); };
+  }, []);
+
   return (
     <>
       <ProgressScreen />
