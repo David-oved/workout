@@ -308,7 +308,7 @@ async function runTurn() {
 const PRODUCT_HINT = '[PRODUCT MODE] He wants to add a NEW product to his food list. Identify the product in the photo (name, brand, flavour or variant). If a nutrition label is visible, read it exactly (source "label"; convert per-serving values to per 100 g). If it is not visible, search the web for its nutrition values per 100 g, Israeli sources first (manufacturer site, supermarket product pages, the Ministry of Health database) and put the page in "url" (source "web"). Return exactly one entry in "products", add "unitLabel" and "unitGrams" if the pack shows a unit or serving weight. Do NOT put anything in "items" unless he says he ate it. If you could not find reliable values, say what is missing and ask for a photo of the back of the pack. He can correct you in the chat; return the full updated product each time.';
 
 let lastSend = { text: '', at: 0 };
-export async function sendMessage(text: string, files: Attachment[], opts?: { product?: boolean }) {
+export async function sendMessage(text: string, files: Attachment[], opts?: { product?: boolean; hint?: string }) {
   if (chat.get().busy) return;
   // אותה הודעה פעמיים בתוך שנייה וחצי (לחיצה כפולה או אנטר + כפתור): לא שולחים שוב
   const now = Date.now();
@@ -319,7 +319,7 @@ export async function sendMessage(text: string, files: Attachment[], opts?: { pr
     id: uid(),
     role: 'user',
     text: text.trim() || (opts?.product ? 'מוצר חדש מהתמונה' : ''),
-    hint: opts?.product ? PRODUCT_HINT : undefined,
+    hint: opts?.product ? PRODUCT_HINT : opts?.hint,
     images: files.filter((f) => f.mime.startsWith('image/') && f.url).map((f) => f.url!),
     fileNames: files.filter((f) => !f.mime.startsWith('image/')).map((f) => f.name ?? 'מסמך'),
   };
@@ -329,6 +329,15 @@ export async function sendMessage(text: string, files: Attachment[], opts?: { pr
 }
 
 export const retryLast = () => (chat.get().busy ? undefined : runTurn());
+
+/** תשובה חדשה לאותה שאלה: מוחק את התשובה האחרונה (רק אם אין בה כרטיס) ושואל שוב */
+export function regenerate(id: string) {
+  const s = chat.get();
+  const last = s.messages[s.messages.length - 1];
+  if (s.busy || !last || last.id !== id || last.role !== 'ai' || last.card) return;
+  setChat((x) => ({ ...x, messages: x.messages.slice(0, -1), error: undefined, detail: undefined, quota: undefined }));
+  void runTurn();
+}
 
 /** עצירה באמצע חשיבה */
 export function stopChat() {

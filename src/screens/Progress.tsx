@@ -9,6 +9,8 @@ import { aiState } from '../ai/gemini';
 import { sendMessage } from '../ai/chat';
 import { shiftTargets, weeklyReview } from '../core/review';
 import { e1rm } from '../data/exercises';
+import { hold, openMenu } from '../ui/actmenu';
+import { askAi as askAiHold } from '../ai/ask';
 
 export function ProgressScreen() {
   const s = store.use((x) => x);
@@ -148,7 +150,10 @@ export function ProgressScreen() {
         <div class="g card">
           <div class="ch"><b><Trophy />שיאים בתרגילים</b><span class="mu">הסט הטוב ביותר</span></div>
           {records.map(([name, r]) => (
-            <div class="rec-r" key={name}><span>{name}</span><span class="num">{r.kg} ק״ג × {r.reps}</span></div>
+            <div class="rec-r" key={name} {...(aiOn ? hold(() => openMenu(name, [
+              { ai: true, icon: <Sparkles />, label: 'איך אשפר את השיא?', run: () => askAiHold(`השיא שלי ב${name} הוא ${r.kg} ק״ג × ${r.reps}. איך כדאי להתקדם משם?`, { hint: `[CONTEXT] He long-pressed his personal record for "${name}": ${r.kg} kg x ${r.reps} reps (${r.date}). Use his training history in the data. Be brief.` }) },
+              { ai: true, icon: <Sparkles />, label: 'איך מבצעים נכון?', run: () => askAiHold(`הסבר לי בקצרה איך מבצעים ${name} נכון, טעויות נפוצות, ואיך לא להיפצע.`) },
+            ], `${r.kg} ק״ג × ${r.reps}`)) : {})}><span>{name}</span><span class="num">{r.kg} ק״ג × {r.reps}</span></div>
           ))}
         </div>
       )}

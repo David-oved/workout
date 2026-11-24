@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
-import { Check, Undo2, Globe, Brain, FileText, X } from 'lucide-preact';
-import { chat, confirmMemory, dismissMemory, pendingProducts, retryLast, undoAdd } from '../ai/chat';
+import { Check, Undo2, Globe, Brain, FileText, X, Copy, Send, Pencil, Quote, RefreshCw, Share2 } from 'lucide-preact';
+import { chat, confirmMemory, dismissMemory, pendingProducts, regenerate, retryLast, undoAdd, type Msg } from '../ai/chat';
+import { toast } from '../ui/ui';
+import { hold, openMenu, type MenuItem } from '../ui/actmenu';
 import { ProductCard } from './ProductCard';
 import { Md } from './AiChat';
 import { BusyRow } from './BusyRow';
@@ -67,16 +69,48 @@ export function ErrorBox() {
   );
 }
 
-export function Messages({ onSuggest }: { onSuggest: (t: string) => void }) {
+const plain = (t: string) => t.replace(/\*\*/g, '').replace(/^#+\s*/gm, '').trim();
+
+async function copyText(t: string) {
+  try { await navigator.clipboard.writeText(t); toast('הועתק'); }
+  catch {
+    // גיבוי כשאין הרשאת לוח: בחירה זמנית בשדה נסתר
+    try {
+      const ta = document.createElement('textarea');
+      ta.value = t; ta.style.cssText = 'position:fixed;opacity:0;left:-999px'; document.body.appendChild(ta);
+      ta.select(); document.execCommand('copy'); ta.remove(); toast('הועתק');
+    } catch { toast('ההעתקה לא הצליחה'); }
+  }
+}
+
+/** תפריט הלחיצה הארוכה על הודעה: העתקה, שליחה חוזרת, עריכה, שיתוף ושאלה על התשובה */
+function msgMenu(m: Msg, last: boolean, o: { onSuggest: (t: string) => void; onFill?: (t: string) => void }) {
+  const text = plain(m.text);
+  const items: MenuItem[] = [];
+  if (text) items.push({ label: 'העתק', icon: <Copy />, run: () => void copyText(text) });
+  if (m.role === 'user' && text && !chat.get().busy) {
+    items.push({ label: 'שלח שוב', icon: <Send />, run: () => o.onSuggest(m.text) });
+    if (o.onFill) items.push({ label: 'ערוך ושלח', icon: <Pencil />, run: () => o.onFill!(m.text) });
+  }
+  if (m.role === 'ai' && text) {
+    if (o.onFill) items.push({ label: 'שאל על התשובה הזו', icon: <Quote />, run: () => o.onFill!(`בנוגע ל״${text.length > 70 ? text.slice(0, 70).trim() + '…' : text}״: `) });
+    if (last && !m.card && !chat.get().busy) items.push({ label: 'תשובה חדשה לאותה שאלה', icon: <RefreshCw />, run: () => regenerate(m.id) });
+  }
+  if (text && typeof navigator.share === 'function') items.push({ label: 'שתף', icon: <Share2 />, run: () => void navigator.share({ text }).catch(() => undefined) });
+  openMenu(m.role === 'user' ? 'ההודעה שלך' : 'תשובת ה-AI', items, text.length > 60 ? text.slice(0, 60).trim() + '…' : text);
+}
+
+export function Messages({ onSuggest, onFill }: { onSuggest: (t: string) => void; onFill?: (t: string) => void }) {
   const st = chat.use((s) => s);
   const lastAi = [...st.messages].reverse().find((m) => m.role === 'ai');
+  const lastId = st.messages[st.messages.length - 1]?.id;
   return (
     <>
       {st.messages.map((m) => (
         <div class={'msg ' + (m.role === 'user' ? 'u' : 'a')} key={m.id}>
           <div class="mcol">
             {(m.text || m.images?.length || m.fileNames?.length) && (
-              <div class={'mb' + (m.role === 'ai' ? ' md' : '')}>
+              <div class={'mb' + (m.role === 'ai' ? ' md' : '')} {...(m.text && !m.streaming ? hold(() => msgMenu(m, m.id === lastId, { onSuggest, onFill })) : {})}>
                 {m.images?.length ? <div class="mimgs">{m.images.map((u) => <img src={u} />)}</div> : null}
                 {m.fileNames?.length ? <div class="fchips">{m.fileNames.map((n) => <span class="fchip"><FileText />{n}</span>)}</div> : null}
                 {m.role === 'ai' ? <Md text={m.text} /> : m.text}

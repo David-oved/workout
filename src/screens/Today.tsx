@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
-import { Sparkles, Bell, Mic, X, Droplets, ListChecks, Minus, Settings as Cog, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, ChevronsUpDown, Maximize2, Plus, Dumbbell, Check, Copy, Download, Siren, RefreshCw } from 'lucide-preact';
+import { Sparkles, Bell, Mic, X, Droplets, ListChecks, Minus, Settings as Cog, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, ChevronsUpDown, Maximize2, Plus, Dumbbell, Check, Copy, Download, Siren, RefreshCw, Pencil } from 'lucide-preact';
 import { CountNum } from '../ui/anim';
 import { burst, rain, confetti, floatText } from '../ui/fx';
 import { streakOf } from '../core/streak';
@@ -14,6 +14,8 @@ import { dayInfo, fmt } from '../core/calc';
 import { DAY_NAMES, addDays, dayLabel, dayMonth, dow, todayKey } from '../core/dates';
 import { ui, setUi, openAdd, toast, guessSlot } from '../ui/ui';
 import { Ring } from '../ui/components';
+import { hold, openMenu, type MenuItem } from '../ui/actmenu';
+import { aiReady, askAi } from '../ai/ask';
 import { label } from '../core/meal';
 import { nudgesFor, type Nudge } from '../core/reminders';
 import type { Workout } from '../core/types';
@@ -248,6 +250,47 @@ export function TodayScreen() {
   };
   const sub = `${DAY_NAMES[dow(date)]} ${dayMonth(date)} · ${info.place === 'dorm' ? 'מעונות' : 'בית'}`;
 
+  /** לחיצה ארוכה על מדד: פירוט, ואם ה-AI מחובר גם שאלות מוכנות עליו (רק להיום) */
+  const metricMenu = (k: 'k' | 'p' | 'c' | 'f') => {
+    const names = { k: 'קלוריות', p: 'חלבון', c: 'פחמימה', f: 'שומן' } as const;
+    const en = { k: 'calories', p: 'protein', c: 'carbs', f: 'fat' } as const;
+    const name = names[k];
+    const rem = Math.round(target[k] - eaten[k]);
+    const unit = k === 'k' ? 'קלוריות' : `גרם ${name}`;
+    const items: MenuItem[] = [{ label: 'פירוט', icon: <ListChecks />, run: () => setUi({ stat: k }) }];
+    if (aiReady() && date === today) {
+      const hint = `[CONTEXT] He long-pressed the ${en[k]} metric on the home screen. Eaten so far today: ${Math.round(eaten[k])}, daily target: ${Math.round(target[k])}, remaining: ${rem}. Be brief and practical, suggest concrete foods he can find in Israel.`;
+      items.push({
+        ai: true, icon: <Sparkles />,
+        label: rem > 0 ? 'מה כדאי לאכול עכשיו?' : 'עברתי את היעד, מה לעשות?',
+        run: () => askAi(rem > 0 ? `נשארו לי ${rem} ${unit} להיום. מה כדאי לאכול עכשיו כדי להשלים?` : `עברתי את יעד ה${name} ב-${-rem}. מה כדאי לעשות לשאר היום?`, { hint, date }),
+      });
+      items.push({ ai: true, icon: <Sparkles />, label: 'איך השבוע שלי?', run: () => askAi(`איך הייתה הצריכה שלי של ${name} בשבוע האחרון לעומת היעד, ומה כדאי לשפר?`, { hint, date }) });
+    }
+    openMenu(name, items, `אכלת ${fmt(Math.round(eaten[k]))} מתוך ${fmt(Math.round(target[k]))}`);
+  };
+
+  /** לחיצה ארוכה על מנה ביומן: עריכה, הוספה שוב, ושאלה על המנה */
+  const entryMenu = (e: (typeof info.entries)[number]) => {
+    const items: MenuItem[] = [
+      { label: 'ערוך', icon: <Pencil />, run: () => setUi({ editEntry: e.id }) },
+      {
+        label: 'הוסף שוב', icon: <Plus />,
+        run: () => {
+          const n = actions.addEntry({ date: e.date, slot: e.slot, name: e.name, k: e.k, p: e.p, c: e.c, f: e.f, est: e.est, parts: e.parts });
+          toast(`${e.name} נוסף שוב`, () => actions.removeEntries([n.id]));
+        },
+      },
+    ];
+    if (aiReady()) {
+      items.push({
+        ai: true, icon: <Sparkles />, label: 'מה דעתך על המנה?',
+        run: () => askAi(`מה דעתך על "${e.name}"? איך אפשר לשפר אותה בשביל מאסה?`, { date: e.date, hint: `[CONTEXT] He long-pressed this logged entry: "${e.name}", ${e.k} kcal, ${e.p} g protein, ${e.c} g carbs, ${e.f} g fat${e.est ? ' (estimated values)' : ''}. Do not change or add anything to his day; just answer.` }),
+      });
+    }
+    openMenu(e.name, items, `${e.k} קל׳ · ${e.p} ח׳`);
+  };
+
   // צמצום ארוחות: נשמר במכשיר. חץ ליד כל ארוחה, וכפתור "צמצם הכל" בכותרת
   const [col, setColS] = useState<string[]>(() => { try { return JSON.parse(localStorage.getItem('wo:col') ?? '[]'); } catch { return []; } });
   const saveCol = (n: string[]) => { setColS(n); try { localStorage.setItem('wo:col', JSON.stringify(n)); } catch { /* ignore */ } };
@@ -278,7 +321,7 @@ export function TodayScreen() {
             <div class="slot-b">
               <div class="slot-bi">
                 {list.map((e) => (
-                  <button class="ent2" key={e.id} onClick={() => setUi({ editEntry: e.id })}>
+                  <button class="ent2" key={e.id} onClick={() => setUi({ editEntry: e.id })} {...hold(() => entryMenu(e))}>
                     <span class="etx">
                       <b>{e.name}{e.est && <i class="etag">הערכה</i>}</b>
                       {e.parts && e.parts.length > 1 && <span class="esub">{e.parts.map((p) => label(p.name)).join(' · ')}</span>}
@@ -315,7 +358,7 @@ export function TodayScreen() {
   const roomy = !s.inbox.length;
   const heroEl = (big: boolean) => (
     <div class={'g hero' + (big && roomy ? ' v' : '') + (left < 0 ? ' over' : '')}>
-      <div class="hrw" ref={big ? undefined : ringRef} onClick={tapRing}>
+      <div class="hrw" ref={big ? undefined : ringRef} onClick={tapRing} {...hold(() => metricMenu('k'))}>
         <Ring size={big && roomy ? 200 : 150} stroke={big && roomy ? 15 : 12} pct={eaten.k / target.k} color={left < 0 ? 'var(--warn)' : 'var(--accent)'}>
           <div class="rc">
             <div class="big num"><CountNum v={Math.abs(left)} /></div>
@@ -334,7 +377,7 @@ export function TodayScreen() {
       {MACROS.map((m) => {
         const rem = target[m.k] - eaten[m.k];
         return (
-          <button class="g mc" key={m.k} onClick={() => setUi({ stat: m.k })} aria-label={`פירוט ${m.name}`}>
+          <button class="g mc" key={m.k} onClick={() => setUi({ stat: m.k })} aria-label={`פירוט ${m.name}`} {...hold(() => metricMenu(m.k))}>
             <Ring size={big ? 78 : 70} stroke={big ? 7 : 6.5} pct={eaten[m.k] / target[m.k]} color={m.color} cls="mr">
               <span class="num"><CountNum v={Math.abs(rem)} raw /></span>
             </Ring>

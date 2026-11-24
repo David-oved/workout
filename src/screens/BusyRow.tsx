@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'preact/hooks';
-import { RefreshCw, Square } from 'lucide-preact';
-import { chat, retryLast, retryNow, stopChat } from '../ai/chat';
+import { RefreshCw } from 'lucide-preact';
+import { chat, retryLast, retryNow } from '../ai/chat';
 
 /** סטטוס של ה-AI בזמן שהוא עובד: מה קורה עכשיו, כמה זמן, איזה מודל, ואפשרות לעצור או לשלוח שוב */
 export function BusyRow() {
@@ -37,7 +37,6 @@ export function BusyRow() {
         {slow && <span class="slowtag">לוקח יותר מהרגיל{r && r.timeoutS ? ` · אם לא תהיה תגובה תוך ${r.timeoutS} שנ׳ אשלח שוב לבד` : ''}</span>}
       </div>
       <div class="busy-act">
-        <button class="stop" onClick={stopChat}><Square />עצור</button>
         {sec >= 8 && <button onClick={() => void retryNow()}><RefreshCw />שלח שוב עכשיו</button>}
       </div>
     </div>

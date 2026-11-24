@@ -419,7 +419,10 @@ export function AddScreen() {
                 </div>
               </div>
             )}
-            <Messages onSuggest={(t) => submit(t)} />
+            <Messages onSuggest={(t) => submit(t)} onFill={(t) => {
+              setQ(t);
+              setTimeout(() => { const el = taRef.current; if (el) { el.focus(); el.style.height = 'auto'; el.style.height = Math.min(el.scrollHeight, 120) + 'px'; el.setSelectionRange(t.length, t.length); } }, 80);
+            }} />
           </>
         ) : q.trim() ? (
           <div class="as-res">

@@ -1107,3 +1107,15 @@ body.fx .as-tray.dock{animation:slideUp .5s var(--spring) backwards}
 /* ---------- v0.27: ידית גיליון עם אזור מגע גדול, החלקה למטה סוגרת ---------- */
 .grabz{padding:12px 0 14px;margin:-12px 0 0;touch-action:none;position:relative;z-index:2}
 .grabz .grab{margin:0 auto}
+
+/* ===== תפריט פעולות ללחיצה ארוכה ===== */
+[data-hold]{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
+[data-hold].holding{transform:scale(.975);filter:brightness(1.12);transition:transform .3s var(--ease),filter .3s}
+.am{padding:4px 0 2px}
+.am-h{display:flex;flex-direction:column;gap:2px;padding:2px 8px 10px;border-bottom:.5px solid rgba(255,255,255,.1);margin-bottom:6px}
+.am-h b{font-size:18px;font-weight:600}
+.am-h small{color:var(--mu);font-size:13px;line-height:1.45;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.am-i{display:flex;align-items:center;gap:14px;width:100%;padding:14px 10px;border-radius:16px;font-size:16px;text-align:right;color:var(--tx)}
+.am-i svg{width:20px;height:20px;flex:none;opacity:.8}
+.am-i.ai svg{color:var(--accent);opacity:1}
+.am-i:active{background:rgba(255,255,255,.09)}
