@@ -94,8 +94,9 @@ export function AddScreen() {
     if (!draft?.slot || aiSlot.current.id === draft.id) return;
     const valid = store.get().settings.slots.some((x) => x.id === draft.slot);
     const cur = ui.get().addSlot;
-    if (valid && (aiSlot.current.slot === undefined || cur === aiSlot.current.slot)) setUi({ addSlot: draft.slot });
-    aiSlot.current = { id: draft.id, slot: valid ? draft.slot : cur };
+    // מיישמים כשזו הצעה ראשונה, או כשה-AI שינה את הארוחה (המוצרים השתנו או ביקשת). אותה הצעה שוב לא דורסת בחירה ידנית
+    if (valid && (aiSlot.current.slot === undefined || draft.slot !== aiSlot.current.slot) && cur !== draft.slot) setUi({ addSlot: draft.slot });
+    aiSlot.current = { id: draft.id, slot: valid ? draft.slot : aiSlot.current.slot ?? cur };
   }, [draft?.id]);
   const aiItems: TItem[] = (draft?.items ?? []).map((it) => ({
     id: it.id, name: it.name, unit: 'g', amount: it.grams, step: 10, base: 100,

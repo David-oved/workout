@@ -145,6 +145,10 @@ function buildTurns(msgs: Msg[], lib: Lib, hints: string): ChatTurn[] {
     const live = new Set(store.get().entries.map((e) => e.id));
     const addedLines = msgs.filter((m) => m.card === 'added' && m.addedIds?.some((id) => live.has(id))).map((m) => `- ${m.addedLabel ?? ''}: ${(m.items ?? []).map((i) => `${i.name} ${i.grams}g`).join(', ')}`);
     if (addedLines.length) last.text += `\n\n[ALREADY ADDED TO HIS DAY FROM THIS CHAT]\n${addedLines.join('\n')}`;
+    if (d?.items?.length) {
+      const sl = store.get().settings.slots.find((x) => x.id === ui.get().addSlot);
+      if (sl) last.text += `\n\n[CARD MEAL SLOT] ${sl.id} = ${sl.name}${d.slot === sl.id ? ' (your suggestion)' : ' (set by him)'}`;
+    }
     if (hints) last.text += `\n\n${hints}`;
     last.text += `\n\n${nowBlock()}\n\n${buildAppData(ui.get().addDate)}`;
   }
