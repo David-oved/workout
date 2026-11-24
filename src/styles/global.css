@@ -1044,3 +1044,9 @@ body.fx .siric{animation:entIn .55s var(--spring) backwards}
 .glance.hc .gl-add{display:none}
 .glance.hc .sr-l>div:nth-child(n+5){display:none}
 .glance.hc .gl-mid{gap:10px}
+
+/* ---------- v0.24.2: פירוט קריאות ל-AI ---------- */
+.mtr{margin:0 6px}
+.mtr summary{font-size:11px;direction:ltr;cursor:pointer;list-style:none}
+.mtr summary::-webkit-details-marker{display:none}
+.mtr pre{margin:4px 0 0;padding:8px 10px;border-radius:10px;background:rgba(255,255,255,.06);font-size:10.5px;line-height:1.5;direction:ltr;text-align:left;white-space:pre-wrap;word-break:break-word;color:var(--mu)}

@@ -217,7 +217,12 @@ export function AiChat() {
               ) : null}
               {m.webFailed && <div class="mu" style={{ fontSize: 12, margin: '0 6px' }}>החיפוש באינטרנט לא זמין כרגע, אז זו תשובה בלי מקורות.</div>}
               {m.remembered?.length ? <div class="remb">{m.remembered.map((r) => <span><Brain />נשמר בזיכרון: {r}</span>)}</div> : null}
-              {m.meta && <div class="mu num" style={{ fontSize: 11, margin: '0 6px', direction: 'ltr' }}>{m.meta.model} · {(m.meta.ms / 1000).toFixed(1)}s{m.meta.thinking ? ` · think:${m.meta.thinking}` : ''}{m.meta.web ? ' · web' : ''}</div>}
+              {m.meta && (
+                <details class="mtr">
+                  <summary class="mu num">{m.meta.model} · {(m.meta.ms / 1000).toFixed(1)}s{m.meta.calls && m.meta.calls > 1 ? ` · ${m.meta.calls} קריאות` : ''}{m.meta.thinking ? ` · think:${m.meta.thinking}` : ''}{m.meta.web ? ' · web' : ''}</summary>
+                  {m.meta.trace?.length ? <pre>{m.meta.trace.join('\n')}</pre> : null}
+                </details>
+              )}
               {m.card === 'draft' && <MealCard m={m} slotName={slotName} onAdd={() => addCardToDay(m.id, date, slot, slotName)} />}
               {m.card === 'added' && (
                 <div class="g mcard added">

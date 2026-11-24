@@ -298,6 +298,8 @@ export async function scanModels() {
  */
 /** מודלים שנתקעו בהגבלת קצב דקתית: לא מנסים אותם עד שהזמן עובר */
 const cooldown: Record<string, number> = {};
+/** המודל שענה בהצלחה בפעם האחרונה (לטקסט רגיל / לחזק): מנסים אותו קודם, כדי שהתשובות יהיו עקביות */
+const lastGood: Record<string, string> = {};
 const cooling = (m: string) => (cooldown[m] ?? 0) > Date.now();
 
 function modelOrder(strong: boolean, current: string): string[] {
@@ -324,6 +326,7 @@ export interface ChatOpts {
   deep?: boolean; // חשיבה עמוקה להודעה הזו
   docs?: boolean; // יש מסמכי ספרייה בבקשה
   onStage?: (label: string) => void; // דיווח חי על מה שקורה
+  onAttempt?: (n: number) => void; // מתחיל ניסיון מספר n (כל ניסיון הוא קריאה נפרדת ל-Gemini)
 }
 export interface ChatResult extends AiResult {
   model: string;
@@ -331,6 +334,8 @@ export interface ChatResult extends AiResult {
   sources: Source[];
   thinking?: string;
   webFailed?: boolean;
+  calls: number; // כמה קריאות ל-Gemini נדרשו לתשובה הזו
+  trace: string[]; // מה נוסה ומה נכשל, לבדיקה
 }
 
 /** תור בשיחה בזרימה (SSE): הודעה, כרטיס, זיכרון והצעות. בשגיאה מנסה הגדרות ומודלים אחרים. */
@@ -432,6 +437,8 @@ export async function chatTurn(turns: ChatTurn[], opts: ChatOpts = {}): Promise<
     : [{ x: true, j: true, t: false }, { x: false, j: true, t: false }, { x: false, j: false, t: false }];
 
   const log: string[] = [];
+  const trace: string[] = [];
+  let calls = 0;
   const t0 = performance.now();
   try {
     const cur = await ensureModel(key);
@@ -456,20 +463,28 @@ export async function chatTurn(turns: ChatTurn[], opts: ChatOpts = {}): Promise<
       e.quota = { kind: 'minute', retrySec: Math.ceil(wait), limit: '', quotaId: '', until: Date.now() + wait * 1000 };
       throw withDetail(e, [`בהמתנה: ${order.join(', ')}`]);
     }
+    const lg = lastGood[strong ? 's' : 't'];
+    if (lg && ready.includes(lg)) { ready.splice(ready.indexOf(lg), 1); ready.unshift(lg); }
     for (const model of ready) {
       for (const v of variants) {
         try {
           opts.onStage?.(tried++ === 0 ? `שולח ל-${model}` : `עובר ל-${model}`);
           if (v.t) opts.onStage?.('חוקר באינטרנט');
           else { const lv = v.x ? resolveThinking(model, wantThink) : undefined; opts.onStage?.(lv && lv !== 'minimal' && lv !== 'low' ? 'חושב לעומק' : 'חושב'); }
+          calls++;
+          trace.push(`#${calls} ${model}${v.t ? ' +web' : ''}${v.x ? '' : ' -think'}${v.j ? '' : ' -json'}`);
+          opts.onAttempt?.(calls);
           const { acc, blocked } = await stream(model, v);
           if (blocked) throw new Error('הבקשה נחסמה על ידי Gemini. נסה לנסח אחרת');
           if (!acc.trim()) { log.push(`${model}: תשובה ריקה`); continue; }
           const res = opts.raw ? ({ reply: acc, items: [], products: [], memory: [], suggestions: [] } as AiResult) : parseAiJson(acc, uid);
           // כשכופים JSON והמודל החזיר שברי טקסט (למשל reply"}), לא מציגים את זה אלא עוברים לנסיון הבא
           if (res.fallback && v.j) { log.push(`${model}: תשובה לא תקינה (לא JSON): ${acc.trim().slice(0, 300)}`); continue; }
+          lastGood[strong ? 's' : 't'] = model;
           return {
             ...res,
+            calls,
+            trace: [...trace, ...log.map((l) => '  ! ' + l)],
             model,
             ms: Math.round(performance.now() - t0),
             sources,

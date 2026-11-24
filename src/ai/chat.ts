@@ -30,7 +30,7 @@ export interface Msg {
   addedIds?: string[];
   addedLabel?: string;
   streaming?: boolean;
-  meta?: { model: string; ms: number; thinking?: string; web?: boolean };
+  meta?: { model: string; ms: number; thinking?: string; web?: boolean; calls?: number; trace?: string[] };
   sources?: Source[];
   remembered?: string[];
   suggestions?: string[];
@@ -186,12 +186,23 @@ async function runTurn() {
     if (lib.parts.length + lib.texts.length > 0) stage('קורא את המסמכים מהספרייה');
     const hints = lastUser?.text ? await foodHints(lastUser.text).catch(() => '') : '';
     const turns = buildTurns(chat.get().messages.filter((m) => m.id !== ph), lib, hints);
+    // כל ניסיון נוסף (אחרי כשלון) הוא תשובה חדשה: לא מציגים אותה בזרימה, כדי שהטקסט לא יתחלף מול העיניים
+    let attemptNo = 0;
     const callOpts = {
       web,
       deep,
       docs: lib.parts.length + lib.texts.length > 0,
       onStage: stage,
+      onAttempt: (n: number) => { attemptNo = n; if (n > 1) patchMsg(ph, (m) => (m.text ? { ...m, text: '' } : m)); },
       onDelta: (acc: string) => {
+        if (attemptNo > 1) return;
+        // הכרטיס נכתב לפני התשובה: אם יש בו פריט משולב, התשובה הזו תוחלף בניסיון השני, אז לא מציגים אותה בכלל
+        const ri = acc.search(/"reply"\s*:/);
+        const ii = acc.search(/"items"\s*:/);
+        if (ii >= 0 && (ri < 0 || ii < ri)) {
+          const head = ri < 0 ? acc : acc.slice(0, ri);
+          if ([...head.matchAll(/"name"\s*:\s*"([^"]*)"/g)].some((m) => isCombined(m[1]))) { once('מפרק פריט משולב לרכיבים'); return; }
+        }
         const r = extractReply(acc);
         const text = r || (acc.trimStart().startsWith('{') ? '' : acc);
         if (text) { once('כותב תשובה'); patchMsg(ph, (m) => (m.text === text ? m : { ...m, text })); }
@@ -208,7 +219,12 @@ async function runTurn() {
         { role: 'model', text: JSON.stringify({ reply: res.reply, items: res.items.map(stripId) }) },
         { role: 'user', text: `[SYSTEM FIX] These items combine several foods or carry a quantity in the name: ${bad.map((x) => JSON.stringify(x)).join(', ')}. One item must be ONE single food in the singular. Return the full updated card again (same reply style) with every combined item split into separate single-food items, and with count and unitGrams for whole units.` },
       ];
-      try { res = await chatTurn(fixTurns, callOpts); } catch { /* נשארים עם התשובה הראשונה */ }
+      // הניסיון השני שקט: בלי זרימה בטקסט ובלי להחליף את מה שמוצג עד שהוא מוכן
+      const first = res;
+      try {
+        const again = await chatTurn(fixTurns, { ...callOpts, onDelta: undefined, onAttempt: undefined });
+        res = { ...again, calls: first.calls + again.calls, trace: [...first.trace, '— פירוק פריט משולב —', ...again.trace] };
+      } catch { /* נשארים עם התשובה הראשונה */ }
     }
     // ה-AI חזר עם אותה ארוחה שכבר נוספה? לא פותחים כרטיס כפול
     const lastCard = [...chat.get().messages].reverse().find((m) => m.card === 'added' || m.card === 'draft');
@@ -230,7 +246,7 @@ async function runTurn() {
         role: 'ai',
         text: res.reply,
         sent: res.items,
-        meta: { model: res.model, ms: res.ms, thinking: res.thinking, web: web && !res.webFailed },
+        meta: { model: res.model, ms: res.ms, thinking: res.thinking, web: web && !res.webFailed, calls: res.calls, trace: res.trace },
         sources: res.sources.length ? res.sources : undefined,
         remembered: remembered.length ? remembered : undefined,
         suggestions: res.suggestions.length ? res.suggestions : undefined,
@@ -264,8 +280,13 @@ async function runTurn() {
 
 const PRODUCT_HINT = '[PRODUCT MODE] He wants to add a NEW product to his food list. Identify the product in the photo (name, brand, flavour or variant). If a nutrition label is visible, read it exactly (source "label"; convert per-serving values to per 100 g). If it is not visible, search the web for its nutrition values per 100 g, Israeli sources first (manufacturer site, supermarket product pages, the Ministry of Health database) and put the page in "url" (source "web"). Return exactly one entry in "products", add "unitLabel" and "unitGrams" if the pack shows a unit or serving weight. Do NOT put anything in "items" unless he says he ate it. If you could not find reliable values, say what is missing and ask for a photo of the back of the pack. He can correct you in the chat; return the full updated product each time.';
 
+let lastSend = { text: '', at: 0 };
 export async function sendMessage(text: string, files: Attachment[], opts?: { product?: boolean }) {
   if (chat.get().busy) return;
+  // אותה הודעה פעמיים בתוך שנייה וחצי (לחיצה כפולה או אנטר + כפתור): לא שולחים שוב
+  const now = Date.now();
+  if (text.trim() && text.trim() === lastSend.text && now - lastSend.at < 1500) return;
+  lastSend = { text: text.trim(), at: now };
   if (opts?.product) chat.set((s) => ({ ...s, product: true }));
   const m: Msg = {
     id: uid(),
