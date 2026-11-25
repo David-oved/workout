@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
-import { ScanLine, Check, HelpCircle, X, Plus, Minus, Sparkles, Camera, Paperclip, ArrowUp, ChevronDown, Star, Globe, Brain, ChevronRight, Pencil, Info, MessageSquarePlus, Utensils, History, PencilLine, Square } from 'lucide-preact';
+import { ScanBarcode, ScanLine, Check, HelpCircle, X, Plus, Minus, Sparkles, Camera, Paperclip, ArrowUp, ChevronDown, Star, Globe, Brain, ChevronRight, Pencil, Info, MessageSquarePlus, Utensils, History, PencilLine, Square } from 'lucide-preact';
 import { store } from '../core/state';
 import { actions } from '../core/actions';
 import { dayInfo, fmt } from '../core/calc';
@@ -17,6 +17,8 @@ import { dbState, getFood, loadDb, searchFoods, type FoodRec } from '../data/foo
 import { AmtInput, FoodPicker, FoodRow } from './FoodPicker';
 import { PotSheet } from './Pot';
 import { openCamera } from '../ui/camera';
+import { openScanner } from '../ui/scan';
+import { unlockAudio } from '../ui/fx';
 import { ProductCard } from './ProductCard';
 import { parseMeal, parseNewProduct, type Parsed } from '../core/parse';
 
@@ -352,6 +354,7 @@ export function AddScreen() {
       <input ref={inRef} value={q} placeholder="ספר ל-AI מה אכלת, או חפש מזון…" autocomplete="off" enterkeyhint="send"
         onInput={(e) => setQ((e.target as HTMLInputElement).value)}
         onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); submit(); } }} />
+      <button class="ic" aria-label="סרוק ברקוד" onClick={() => { unlockAudio(); openScanner(); }}><ScanBarcode /></button>
       <button class="ic" aria-label="צרף תמונה או PDF" disabled={files.length >= 3} onClick={() => openCamera((f) => void addChatFiles(f))}><Camera /></button>
       {(q.trim() || files.length > 0) && <button class="ic go" aria-label="שלח ל-AI" onClick={() => submit()}><ArrowUp /></button>}
     </div>

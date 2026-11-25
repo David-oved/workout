@@ -2,6 +2,7 @@ import { useEffect, useState } from 'preact/hooks';
 import { lazy, Suspense } from 'preact/compat';
 import { Dock, ToastView, UpdateBanner } from './ui/components';
 import { CameraView } from './ui/CameraView';
+import { BarcodeScanner } from './ui/BarcodeScanner';
 import { ActMenu } from './ui/actmenu';
 import { Onboarding } from './screens/Onboarding';
 import { StatSheet } from './screens/StatSheet';
@@ -93,6 +94,7 @@ export function App() {
       <StatSheet />
       <Later need={needPlan}><PlanSheet /></Later>
       <Onboarding />
+      <BarcodeScanner />
       <CameraView />
       <ActMenu />
       <ToastView />

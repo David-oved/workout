@@ -1150,3 +1150,20 @@ body.fx .as-tray.dock{animation:slideUp .5s var(--spring) backwards}
 .scd>summary+*{margin-top:12px}
 .scd ol{margin:10px 16px 0;padding-inline-start:20px;line-height:1.7;font-size:14px}
 .scd .mu{font-size:12.5px;line-height:1.6;margin-top:10px}
+
+/* ===== סורק ברקוד ===== */
+.scan-frame{position:absolute;left:50%;top:38%;width:min(78vw,320px);aspect-ratio:1.6;transform:translate(-50%,-50%);pointer-events:none}
+.scan-frame i{position:absolute;width:34px;height:34px;border:3px solid var(--accent);border-radius:6px}
+.scan-frame i:nth-child(1){top:0;left:0;border-right:0;border-bottom:0}
+.scan-frame i:nth-child(2){top:0;right:0;border-left:0;border-bottom:0}
+.scan-frame i:nth-child(3){bottom:0;left:0;border-right:0;border-top:0}
+.scan-frame i:nth-child(4){bottom:0;right:0;border-left:0;border-top:0}
+.scan-frame::after{content:'';position:absolute;left:6%;right:6%;top:50%;height:2px;background:linear-gradient(90deg,transparent,var(--accent),transparent);animation:scanline 1.8s var(--ease) infinite alternate;opacity:.85}
+@keyframes scanline{from{transform:translateY(-70px)}to{transform:translateY(70px)}}
+.scan-hint{position:absolute;left:16px;right:16px;top:calc(38% + 130px);text-align:center;color:#fff;font-size:15px;text-shadow:0 1px 8px rgba(0,0,0,.8);display:flex;justify-content:center;align-items:center;gap:8px}
+.scan-hint svg{width:18px;height:18px}
+.scan-type{position:absolute;left:16px;right:16px;bottom:calc(28px + env(safe-area-inset-bottom));display:flex;gap:8px;align-items:center}
+.scan-type .inp{flex:1;background:rgba(0,0,0,.55);-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px)}
+.scan-sheet{position:absolute;left:10px;right:10px;bottom:calc(10px + env(safe-area-inset-bottom));max-height:86%;overflow-y:auto;border-radius:30px;padding:16px;background:rgba(18,20,26,.92)!important;display:flex;flex-direction:column;gap:10px}
+.scan-sv{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.scan-sv label{display:flex;flex-direction:column;gap:4px;font-size:12.5px;color:var(--mu)}

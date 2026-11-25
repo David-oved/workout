@@ -56,7 +56,7 @@ export interface Dish {
 export interface FoodEdit { k: number; p: number; c: number; f: number; name?: string }
 export interface Portion { l: string; g: number }
 /** מזון אישי שהוספת בעצמך (לכל 100 ג׳ או למנה) */
-export interface CustomFood { id: string; name: string; unit: 'g' | 'p'; per: Macros; portions?: Portion[] }
+export interface CustomFood { id: string; name: string; unit: 'g' | 'p'; per: Macros; portions?: Portion[]; barcode?: string }
 
 export type WorkoutStatus = 'planned' | 'done' | 'skipped';
 export interface Workout {
