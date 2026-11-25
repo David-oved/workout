@@ -105,7 +105,7 @@ export interface Settings {
   cal: { enabled: boolean; feedId: string; alertMin: number };
   remind: Remind;
   /** מה מוצג ואיך: מים (כבוי כברירת מחדל), אנימציות והפתעות, ומנוחה בין סטים (0 = בלי טיימר) */
-  show: { water: boolean; fx: boolean; restSec: number };
+  show: { water: boolean; fx: boolean; restSec: number; glance?: boolean };
   ai: {
     provider: 'none' | 'gemini' | 'groq' | 'claude';
     apiKey: string;

@@ -43,7 +43,7 @@ export function App() {
     const onVisible = () => {
       if (document.visibilityState !== 'visible') { hiddenAt = Date.now(); return; }
       // חזרה אחרי כמה דקות: שוב מבט מהיר, כמו בכניסה לאפליקציה
-      if (hiddenAt && Date.now() - hiddenAt > 3 * 60_000) {
+      if (hiddenAt && Date.now() - hiddenAt > 3 * 60_000 && store.get().settings.show.glance !== false) {
         const c = ui.get();
         if (!c.addOpen && !c.settingsOpen) setUi({ glance: true, tab: 'today' });
       }

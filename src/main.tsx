@@ -17,6 +17,8 @@ async function boot() {
   initViewportLog();
   await loadState();
   initFx();
+  // מי שכיבה את ״מבט מהיר״ נכנס ישר לכל היום
+  if (store.get().settings.show.glance === false) setUi({ glance: false });
   // ה-import הדינמי מבטיח שהסטייט נטען לפני שה-UI נבנה
   const { App } = await import('./app');
   render(<App />, document.getElementById('app')!);

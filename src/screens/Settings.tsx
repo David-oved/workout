@@ -23,10 +23,12 @@ import { siri, enableSiri, disableSiri, rotateSiri, siriUrl, photoUrl, statusUrl
 import { APP_VERSION, BUILD_ID, updater, checkForUpdate, applyUpdate } from '../update/updater';
 import type { Macros, Profile, TargetKey } from '../core/types';
 
-type Page = 'home' | 'profile' | 'targets' | 'week' | 'meals' | 'start' | 'backup' | 'updates' | 'calendar' | 'gcal' | 'ai' | 'aimodels' | 'aiknow' | 'remind' | 'look' | 'siri' | 'ailog';
+type Page = 'home' | 'profile' | 'targets' | 'week' | 'meals' | 'backup' | 'updates' | 'calendar' | 'gcal' | 'cals' | 'ai' | 'aimodels' | 'aiknow' | 'remind' | 'look' | 'siri' | 'ailog';
+/** לאן חוזרים מכל מסך (ברירת מחדל: הגדרות) */
+const PARENT: Partial<Record<Page, Page>> = { aimodels: 'ai', aiknow: 'ai', ailog: 'ai', gcal: 'cals', calendar: 'cals' };
 const TITLES: Record<Page, string> = {
   look: 'מראה והתנהגות', siri: 'Siri וקיצורים', ailog: 'יומן קריאות ל-AI',
-  home: 'הגדרות', profile: 'פרופיל', targets: 'יעדי תזונה', week: 'שבוע ואימונים', meals: 'ארוחות', start: 'תחילת יום', backup: 'גיבוי', updates: 'עדכונים', calendar: 'פיד לקריאה בלבד', gcal: 'Google Calendar', ai: 'AI תזונה', aimodels: 'מודלים וחשיבה', aiknow: 'ידע וזיכרון', remind: 'תזכורות והתראות',
+  home: 'הגדרות', profile: 'פרופיל', targets: 'יעדי תזונה', week: 'שבוע ואימונים', meals: 'ארוחות ותחילת יום', backup: 'גיבוי ושחזור', updates: 'עדכונים ואבחון', calendar: 'פיד לקריאה בלבד', gcal: 'Google Calendar', cals: 'יומנים וסנכרון', ai: 'AI תזונה', aimodels: 'מודלים וחשיבה', aiknow: 'ידע וזיכרון', remind: 'תזכורות והתראות',
 };
 const TARGETS: [TargetKey, string][] = [
   ['dorm-rest', 'מעונות · מנוחה'], ['dorm-train', 'מעונות · אימון'], ['home-rest', 'בית · מנוחה'], ['home-train', 'בית · אימון'],
@@ -195,9 +197,9 @@ function SettingsBody() {
     <>
       <div class="hd" style={{ marginBottom: 10 }}>
         <div>
-          {page !== 'home' && <button class="back" onClick={() => setPage(page === 'aimodels' || page === 'aiknow' || page === 'ailog' ? 'ai' : 'home')}><ChevronRight />{page === 'aimodels' || page === 'aiknow' || page === 'ailog' ? 'AI תזונה' : 'הגדרות'}</button>}
+          {page !== 'home' && <button class="back" onClick={() => setPage(PARENT[page] ?? 'home')}><ChevronRight />{TITLES[PARENT[page] ?? 'home']}</button>}
           <div class="t">{hdr}</div>
-          {page === 'home' && <div class="s">הכל ניתן לשינוי</div>}
+          {page === 'home' && <div class="s">הכל ניתן לשינוי, והשינויים נשמרים מיד</div>}
         </div>
         <button class="g ib" onClick={() => setUi({ settingsOpen: false })} aria-label="סגור"><X /></button>
       </div>
@@ -205,27 +207,42 @@ function SettingsBody() {
       <div class="fs-body" style={{ paddingBottom: 60 }}>
         {page === 'home' && (
           <>
+            <div class="sec"><span>אני</span></div>
             <div class="g rows">
-              <Row icon={<User />} title="פרופיל" value={`גיל ${p.age} · ${p.heightCm} ס״מ · ${p.weightKg}→${p.goalKg} ק״ג`} onClick={() => setPage('profile')} />
+              <Row icon={<User />} title="פרופיל" value={`${p.sex === 'f' ? 'אישה' : 'גבר'} · גיל ${p.age} · ${p.heightCm} ס״מ · ${p.weightKg}→${p.goalKg} ק״ג`} onClick={() => setPage('profile')} />
               <Row icon={<Target />} title="יעדי תזונה" value={`${fmt(set.targets['dorm-train'].k)} קל׳ באימון · ${fmt(set.targets['dorm-rest'].k)} במנוחה`} onClick={() => setPage('targets')} />
-              <Row icon={<Dumbbell />} title="תוכנית אימונים" value={s.plans.length ? `${(s.plans.find((x) => x.id === s.activePlan) ?? s.plans[0]).days.length} ימים בתוכנית` : 'בנה או ייבא תוכנית'} badge={!s.plans.length} onClick={() => setUi({ settingsOpen: false, plan: { dayId: null } })} />
+            </div>
+
+            <div class="sec"><span>השגרה שלי</span></div>
+            <div class="g rows">
+              <Row icon={<Utensils />} title="ארוחות ותחילת יום" value={`${set.slots.length} ארוחות · היום מתחיל ${set.resetHour === 0 ? 'בחצות' : `ב-0${set.resetHour}:00`}`} onClick={() => setPage('meals')} />
               <Row icon={<CalendarDays />} title="שבוע ואימונים" value={`${set.routine.length} אימונים בשבוע · ${set.places.filter((x) => x === 'dorm').length} ימי מעונות`} onClick={() => setPage('week')} />
-              <Row icon={<Utensils />} title="ארוחות" value={set.slots.map((x) => x.name).join(' · ')} onClick={() => setPage('meals')} />
-              <Row icon={<Sunrise />} title="תחילת יום" value={set.resetHour === 0 ? 'חצות' : `0${set.resetHour}:00 לפנות בוקר`} onClick={() => setPage('start')} />
+              <Row icon={<Dumbbell />} title="תוכנית אימונים" value={s.plans.length ? `${(s.plans.find((x) => x.id === s.activePlan) ?? s.plans[0]).days.length} ימים בתוכנית` : 'בנה או ייבא תוכנית'} badge={!s.plans.length} onClick={() => setUi({ settingsOpen: false, plan: { dayId: null } })} />
             </div>
-            <div class="g rows" style={{ marginTop: 14 }}>
-              <Row icon={<Sparkles />} title="מראה והתנהגות" value={`אנימציות ${set.show.fx ? 'פעילות' : 'כבויות'} · מים ${set.show.water ? 'מוצגים' : 'מוסתרים'} · מנוחה ${set.show.restSec ? set.show.restSec + ' שנ׳' : 'בלי טיימר'}`} onClick={() => setPage('look')} />
-              <Row icon={<Mic />} title="Siri וקיצורים" value={siriOn ? 'פעיל · רישום ארוחות בקול' : 'רשום ארוחה בקול, בלי לפתוח את האפליקציה'} badge={!siriOn} onClick={() => setPage('siri')} />
-              <Row icon={<Bell />} title="תזכורות והתראות" value={`${Object.values(set.remind.meals).filter(Boolean).length} ארוחות${set.remind.weigh.on ? ' · שקילה' : ''}${set.remind.close.on ? ' · סגירת יום' : ''}${br.connected ? '' : ' · דורש Google Calendar'}`} badge={!br.connected} onClick={() => setPage('remind')} />
+
+            <div class="sec"><span>AI וקיצורים</span></div>
+            <div class="g rows">
               <Row icon={<Sparkles />} title="AI תזונה (Gemini)" value={aiS.configured ? 'מחובר' : 'הערכת קלוריות מטקסט ותמונה'} badge={!aiS.configured} onClick={() => setPage('ai')} />
-              <Row icon={<CalendarDays />} title="Google Calendar" value={br.connected ? `מחובר · ${br.events.length} אירועים` : 'קריאת אירועים וכתיבת אימונים'} badge={!br.connected} onClick={() => setPage('gcal')} />
-              <Row icon={<CalendarPlus />} title="פיד לקריאה בלבד" value={set.cal.enabled ? `פיד פעיל · התראה ${set.cal.alertMin || 'ללא'}${set.cal.alertMin ? ' דק׳ לפני' : ''}` : 'לא מחובר'} onClick={() => setPage('calendar')} />
-              <Row icon={<Download />} title="גיבוי" value={`גיבוי אחרון: ${lastTxt}`} onClick={() => setPage('backup')} />
-              <Row icon={<RefreshCw />} title="עדכונים" value={updAvail ? 'יש גרסה חדשה' : `גרסה ${APP_VERSION}`} badge={updAvail} onClick={() => setPage('updates')} />
+              <Row icon={<Mic />} title="Siri וקיצורים" value={siriOn ? `פעיל · ניתוח בשרת ${srvOn ? 'פעיל' : 'כבוי'}` : 'רשום ארוחה בקול או בתמונה'} badge={!siriOn} onClick={() => setPage('siri')} />
             </div>
-            <div class="g rows" style={{ marginTop: 14 }}>
-              <Row danger icon={<Trash />} title="מחק את כל הנתונים" onClick={() => {
+
+            <div class="sec"><span>התראות ויומנים</span></div>
+            <div class="g rows">
+              <Row icon={<Bell />} title="תזכורות והתראות" value={pu.on ? 'התראות Push פעילות' : 'לא מופעלות'} badge={!pu.on && pu.support === 'ok'} onClick={() => setPage('remind')} />
+              <Row icon={<CalendarPlus />} title="יומנים וסנכרון" value={`Google ${br.connected ? 'מחובר' : 'לא מחובר'} · פיד לקריאה ${set.cal.enabled ? 'פעיל' : 'כבוי'}`} onClick={() => setPage('cals')} />
+            </div>
+
+            <div class="sec"><span>האפליקציה</span></div>
+            <div class="g rows">
+              <Row icon={<Sparkles />} title="מראה והתנהגות" value={`אנימציות ${set.show.fx ? 'פעילות' : 'כבויות'} · מבט מהיר ${set.show.glance === false ? 'כבוי' : 'פעיל'}`} onClick={() => setPage('look')} />
+              <Row icon={<Download />} title="גיבוי ושחזור" value={`גיבוי אחרון: ${lastTxt}`} onClick={() => setPage('backup')} />
+              <Row icon={<RefreshCw />} title="עדכונים ואבחון" value={updAvail ? 'יש גרסה חדשה' : `גרסה ${APP_VERSION}`} badge={updAvail} onClick={() => setPage('updates')} />
+            </div>
+
+            <div class="g rows" style={{ marginTop: 18 }}>
+              <Row danger icon={<Trash />} title="מחק את כל הנתונים" value="אי אפשר לשחזר בלי גיבוי" onClick={() => {
                 if (!confirm('למחוק את כל הנתונים? אי אפשר לשחזר בלי גיבוי.')) return;
+                if (!confirm('בטוח? כל הארוחות, האימונים והמשקל יימחקו מהטלפון הזה.')) return;
                 update(() => defaultState());
                 setUi({ settingsOpen: false });
                 toast('הכל נמחק');
@@ -234,82 +251,92 @@ function SettingsBody() {
           </>
         )}
 
-        {page === 'siri' && (
-          <>
-            <div class="g rows">
-              <button class="row2" onClick={() => (sr.on ? disableSiri() : enableSiri())}>
-                <span>רישום ארוחות בקול<small>אומרים ל-Siri מה אכלת, והארוחה מחכה לאישור באפליקציה.</small></span>
-                <span class={'tgl' + (sr.on ? ' on' : '')} />
-              </button>
-            </div>
-            {sr.on && (
-              <>
-                <div class="g rows">
-                  <button class="row2" onClick={() => { const v = !srvOn; setSrvOn(v); setSrvEnabled(v); toast(v ? 'הניתוח בשרת פעיל' : 'המפתח נמחק מהשרת'); }}>
-                    <span>ניתוח בשרת, גם כשהאפליקציה סגורה<small>הכרטיסים מוכנים כשאתה נכנס. השרת מנתח לפי הסדר, ומנסה שוב לבד אחרי תקלה או רשת חלשה. כשזה כבוי, המפתח נמחק מהשרת והניתוח קורה רק כשהאפליקציה פתוחה.</small></span>
-                    <span class={'tgl' + (srvOn ? ' on' : '')} />
-                  </button>
-                </div>
-                <div class="sec"><span>הכתובת האישית שלך</span></div>
-                <div class="g card">
-                  <pre class="adet" style={{ direction: 'ltr', textAlign: 'left', whiteSpace: 'pre-wrap', wordBreak: 'break-all', fontSize: 11.5, margin: 0 }}>{siriUrl()}</pre>
-                  <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
-                    <button class="btn primary sm" onClick={async () => { try { await navigator.clipboard.writeText(siriUrl()); toast('הכתובת הועתקה'); } catch { toast('ההעתקה נכשלה'); } }}>העתק כתובת</button>
-                    <button class="btn sm" disabled={sr.busy} onClick={() => void testSiri()}>שלח בדיקה</button>
-                    <button class="btn sm" onClick={() => { if (confirm('ליצור כתובת חדשה? הקיצור הישן יפסיק לעבוד.')) rotateSiri(); }}>כתובת חדשה</button>
+        {page === 'siri' && (() => {
+          const copy = async (v: string) => { try { await navigator.clipboard.writeText(v); toast('הכתובת הועתקה'); } catch { toast('ההעתקה נכשלה'); } };
+          const Addr = ({ v, label }: { v: string; label: string }) => (
+            <>
+              <pre class="adet" style={{ direction: 'ltr', textAlign: 'left', whiteSpace: 'pre-wrap', wordBreak: 'break-all', fontSize: 11.5, margin: 0 }}>{v}</pre>
+              <div style={{ display: 'flex', gap: 8, margin: '10px 0 4px', flexWrap: 'wrap' }}>
+                <button class="btn primary sm" onClick={() => void copy(v)}>{label}</button>
+              </div>
+            </>
+          );
+          return (
+            <>
+              <div class="g rows">
+                <button class="row2" onClick={() => (sr.on ? disableSiri() : enableSiri())}>
+                  <span>קיצורים לרישום ארוחות<small>שולחים ארוחה מהטלפון בקול, בטקסט או בתמונה, והיא מחכה לאישור במסך היום.</small></span>
+                  <span class={'tgl' + (sr.on ? ' on' : '')} />
+                </button>
+              </div>
+              {sr.on && (
+                <>
+                  <div class="sec"><span>ניתוח בשרת</span></div>
+                  <div class="g rows">
+                    <button class="row2" onClick={() => { const v = !srvOn; setSrvOn(v); setSrvEnabled(v); toast(v ? 'הניתוח בשרת פעיל' : 'המפתח נמחק מהשרת'); }}>
+                      <span>ניתוח גם כשהאפליקציה סגורה<small>הכרטיסים מוכנים כשאתה נכנס. השרת מנתח לפי הסדר ומנסה שוב לבד אחרי תקלה או רשת חלשה. דורש חיבור AI.</small></span>
+                      <span class={'tgl' + (srvOn ? ' on' : '')} />
+                    </button>
                   </div>
-                  {sr.msg && <div class="mu" style={{ marginTop: 8, fontSize: 12.5 }}>{sr.msg}</div>}
-                </div>
-                <div class="sec"><span>יוצרים את הקיצור (פעם אחת)</span></div>
-                <div class="g card" style={{ lineHeight: 1.7, fontSize: 14 }}>
-                  <ol style={{ margin: 0, paddingInlineStart: 20 }}>
-                    <li>פתח את אפליקציית <b>קיצורים</b> ולחץ על + לקיצור חדש.</li>
-                    <li>הוסף פעולה <b>״הכתבת טקסט״</b> (Dictate Text). בהגדרות שלה בחר שפה: עברית.</li>
-                    <li>הוסף פעולה <b>״קבל תוכן של כתובת URL״</b> (Get Contents of URL), והדבק בה את הכתובת מכאן.</li>
-                    <li>לחץ על ״הצג עוד״: שיטה <b>POST</b>, גוף הבקשה <b>JSON</b>. הוסף שדה מסוג טקסט: מפתח <b>text</b>, ערך = ״טקסט מוכתב״ (בחירה כמשתנה).</li>
-                    <li>רשות: הוסף ״הצג התראה״ עם התוצאה, כדי לראות ״נרשם ✓״.</li>
-                    <li>תן לקיצור שם, למשל <b>״רשום ארוחה״</b>. עכשיו אפשר: ״היי Siri, רשום ארוחה״.</li>
-                  </ol>
-                  <div class="mu" style={{ marginTop: 10, fontSize: 12.5, lineHeight: 1.6 }}>אם Siri שלך לא מוגדרת לעברית, תן לקיצור שם באנגלית (למשל Log meal). באייפון עם כפתור פעולה: הגדרות ← כפתור פעולה ← קיצור ← הקיצור הזה, ואז לחיצה על הכפתור פותחת הכתבה מיד.</div>
-                </div>
-                <div class="sec"><span>רישום ארוחה מתמונה</span></div>
-                <div class="g card" style={{ lineHeight: 1.7, fontSize: 14 }}>
-                  <div class="mu" style={{ fontSize: 13, marginBottom: 8 }}>קיצור נוסף: מצלמים או בוחרים תמונה, מוסיפים הערה אם רוצים, וה-AI מכין כרטיס ארוחה. דורש חיבור AI.</div>
-                  <pre class="adet" style={{ direction: 'ltr', textAlign: 'left', whiteSpace: 'pre-wrap', wordBreak: 'break-all', fontSize: 11.5, margin: 0 }}>{photoUrl()}</pre>
-                  <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
-                    <button class="btn primary sm" onClick={async () => { try { await navigator.clipboard.writeText(photoUrl()); toast('הכתובת הועתקה'); } catch { toast('ההעתקה נכשלה'); } }}>העתק כתובת לתמונות</button>
+                  <div class="note">כשזה פעיל, מפתח ה-Gemini נשמר גם ב-Worker הפרטי שלך ב-Cloudflare (לא בגיבוי ולא ב-GitHub). כיבוי המתג מוחק אותו משם.</div>
+
+                  <div class="sec"><span>הקיצורים (פתח כדי לבנות)</span></div>
+                  <details class="g card scd">
+                    <summary><b>רישום בקול או בטקסט</b><small>״היי Siri, רשום ארוחה״</small></summary>
+                    <Addr v={siriUrl()} label="העתק כתובת" />
+                    <ol>
+                      <li>בקיצורים: + לקיצור חדש.</li>
+                      <li>פעולה <b>״הכתבת טקסט״</b>, שפה: עברית.</li>
+                      <li>פעולה <b>״קבל תוכן של כתובת URL״</b> עם הכתובת מכאן. הצג עוד ← שיטה <b>POST</b>, גוף <b>JSON</b>, שדה טקסט: מפתח <b>text</b>, ערך = הטקסט המוכתב.</li>
+                      <li>רשות: ״הצג התראה״ עם התוצאה (״נרשם ✓״).</li>
+                      <li>שם לקיצור, למשל ״רשום ארוחה״.</li>
+                    </ol>
+                    <div class="mu">אם Siri לא בעברית, תן שם באנגלית (Log meal). עם כפתור פעולה: הגדרות ← כפתור פעולה ← קיצור.</div>
+                    <div style={{ marginTop: 10 }}><button class="btn sm" disabled={sr.busy} onClick={() => void testSiri()}>שלח בדיקה</button></div>
+                    {sr.msg && <div class="mu" style={{ marginTop: 8 }}>{sr.msg}</div>}
+                  </details>
+                  <details class="g card scd">
+                    <summary><b>רישום מתמונה</b><small>מצלמים, מוסיפים הערה, והכרטיס מוכן</small></summary>
+                    <Addr v={photoUrl()} label="העתק כתובת לתמונות" />
+                    <ol>
+                      <li><b>״בחר מתפריט״</b>: ״מצלמה״ (פעולה ״צלם תמונה״) ו״גלריה״ (״בחר תמונות״, בלי בחירה מרובה).</li>
+                      <li><b>״בקש קלט״</b> מסוג טקסט: ״רוצה להוסיף הערה? (אפשר לדלג)״.</li>
+                      <li><b>״המר תמונה״</b> ל-JPEG, ואחריה <b>״שנה גודל״</b> לרוחב 1280.</li>
+                      <li><b>״קידוד Base64״</b> עם מעברי שורה: ללא.</li>
+                      <li><b>״קבל תוכן של כתובת URL״</b>: POST, גוף <b>טופס</b>, שני שדות טקסט: <b>image</b> = הקידוד, <b>text</b> = ההערה (יכולה להיות ריקה).</li>
+                    </ol>
+                    <div class="mu">לבדיקה: ההתראה בסוף אומרת ״התמונה נרשמה ✓״. אם כתוב ״בלי תמונה״, היא גם מפרטת מה הגיע.</div>
+                  </details>
+                  <details class="g card scd">
+                    <summary><b>״כמה נשאר לי היום?״</b><small>Siri מקריא קלוריות וחלבון שנשארו</small></summary>
+                    <Addr v={statusUrl()} label="העתק כתובת" />
+                    <ol>
+                      <li><b>״קבל תוכן של כתובת URL״</b> עם הכתובת הזו (GET, בלי גוף).</li>
+                      <li><b>״אמור טקסט״</b> עם התוצאה, ושם לקיצור: ״כמה נשאר לי״.</li>
+                    </ol>
+                  </details>
+
+                  <div class="sec"><span>אבטחה</span></div>
+                  <div class="g card">
+                    <div class="mu" style={{ lineHeight: 1.6 }}>הכתובות כוללות מפתח אישי. מי שיש לו אותן יכול לשלוח לך ארוחות ולשאול כמה נשאר לך, לכן הן נשמרות רק בטלפון ולא בגיבוי. אם הן דלפו, צור כתובת חדשה (הקיצורים הישנים יפסיקו לעבוד ויצטרכו עדכון).</div>
+                    <button class="btn block" style={{ marginTop: 10 }} onClick={() => { if (confirm('ליצור כתובת חדשה? הקיצורים הישנים יפסיקו לעבוד.')) rotateSiri(); }}>צור כתובת חדשה</button>
                   </div>
-                  <ol style={{ margin: '12px 0 0', paddingInlineStart: 20 }}>
-                    <li><b>״בחר מתפריט״</b> עם שתי אפשרויות: ״מצלמה״ (פעולה <b>״צלם תמונה״</b>) ו״גלריה״ (פעולה <b>״בחר תמונות״</b>, בלי בחירה מרובה).</li>
-                    <li><b>״בקש קלט״</b> מסוג טקסט, עם ההנחיה ״רוצה להוסיף הערה? (אפשר לדלג)״. כאן מקלידים או מכתיבים מהמקלדת, וזה עובד גם בעברית.</li>
-                    <li><b>״המר תמונה״</b> ל-JPEG, ואחריה <b>״שנה גודל של תמונה״</b> לרוחב 1280.</li>
-                    <li><b>״קידוד Base64״</b> של התמונה, עם <b>״מעברי שורה: ללא״</b>.</li>
-                    <li><b>״קבל תוכן של כתובת URL״</b> עם הכתובת לתמונות: שיטה <b>POST</b>, גוף הבקשה <b>טופס</b>. שני שדות מסוג טקסט: <b>image</b> = תוצאת הקידוד, ו-<b>text</b> = ההערה (יכולה להיות ריקה).</li>
-                  </ol>
-                </div>
-                <div class="sec"><span>״כמה נשאר לי היום?״</span></div>
-                <div class="g card" style={{ lineHeight: 1.7, fontSize: 14 }}>
-                  <div class="mu" style={{ fontSize: 13, marginBottom: 8 }}>קיצור קטן ששואל את Siri ומקריא כמה קלוריות וחלבון נשארו לך להיום, בלי לפתוח את האפליקציה.</div>
-                  <pre class="adet" style={{ direction: 'ltr', textAlign: 'left', whiteSpace: 'pre-wrap', wordBreak: 'break-all', fontSize: 11.5, margin: 0 }}>{statusUrl()}</pre>
-                  <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
-                    <button class="btn primary sm" onClick={async () => { try { await navigator.clipboard.writeText(statusUrl()); toast('הכתובת הועתקה'); } catch { toast('ההעתקה נכשלה'); } }}>העתק כתובת</button>
-                  </div>
-                  <ol style={{ margin: '12px 0 0', paddingInlineStart: 20 }}>
-                    <li>בקיצורים: פעולה <b>״קבל תוכן של כתובת URL״</b> עם הכתובת הזו (שיטה <b>GET</b>, בלי גוף בקשה).</li>
-                    <li>אחריה <b>״אמור טקסט״</b> (Speak Text) עם התוצאה, ושם לקיצור: ״כמה נשאר לי״.</li>
-                  </ol>
-                </div>
-                <div class="note">הטקסט עובר דרך ה-Worker שלך ב-Cloudflare ונשמר שם עד שהאפליקציה מושכת אותו (לכל היותר 14 יום). הכתובת היא סוד: מי שיש לו אותה יכול לשלוח לך ארוחות, ולכן היא נשמרת רק במכשיר ולא בגיבוי. כשהניתוח בשרת פעיל, מפתח ה-Gemini נשמר גם ב-Worker הפרטי שלך (ב-Cloudflare), ולא בגיבוי ולא ב-GitHub. כיבוי המתג מוחק אותו משם.</div>
-              </>
-            )}
-          </>
-        )}
+                  <div class="note">אנדרואיד: אותן כתובות עובדות עם אפליקציות כמו HTTP Shortcuts או Tasker (שליחת POST או GET לכתובת).</div>
+                </>
+              )}
+            </>
+          );
+        })()}
 
         {page === 'ailog' && <AiLogView />}
 
         {page === 'look' && (
           <>
             <div class="g rows">
+              <button class="row2" onClick={() => actions.saveSettings({ show: { ...set.show, glance: set.show.glance === false } })}>
+                <span>מבט מהיר בכניסה<small>הפתיחה מציגה רק את מדדי האוכל וכפתור הוספה. מחליקים למעלה לכל היום. כשכבוי, האפליקציה נפתחת ישר לכל היום.</small></span>
+                <span class={'tgl' + (set.show.glance !== false ? ' on' : '')} />
+              </button>
               <button class="row2" onClick={() => actions.saveSettings({ show: { ...set.show, fx: !set.show.fx } })}>
                 <span>אנימציות והפתעות<small>מספרים שסופרים, קונפטי אחרי אימון, אימוג׳ים כשאוכלים ועוד. מכבדות את ״הפחתת תנועה״ של המכשיר.</small></span>
                 <span class={'tgl' + (set.show.fx ? ' on' : '')} />
@@ -319,18 +346,16 @@ function SettingsBody() {
                 <span class={'tgl' + (set.show.water ? ' on' : '')} />
               </button>
             </div>
-            <div class="sec"><span>טיימר מנוחה בין סטים</span></div>
-            <div class="g card">
-              <div class="chips" style={{ margin: 0, flexWrap: 'wrap', overflow: 'visible' }}>
-                {[0, 45, 60, 90, 120, 180].map((n) => <button key={n} class={'chip' + (set.show.restSec === n ? ' on' : '')} onClick={() => actions.saveSettings({ show: { ...set.show, restSec: n } })}>{n === 0 ? 'כבוי' : n >= 60 ? `${n / 60 === Math.floor(n / 60) ? n / 60 : (n / 60).toFixed(1)} דק׳` : `${n} שנ׳`}</button>)}
-              </div>
-              <div class="note" style={{ marginTop: 10 }}>ביומן האימון מסמנים סט כבוצע והטיימר מתחיל לבד, עם צליל ורטט בסיום.</div>
-            </div>
+            <div class="note">לחיצה ארוכה על הודעה בצ׳אט, על מדד, על מנה ביומן או על שיא בתרגיל פותחת תפריט פעולות קצר.</div>
           </>
         )}
 
         {page === 'profile' && (
           <>
+            <div class="sec"><span>מין (משפיע על חישוב היעדים ועל הפנייה של ה-AI)</span></div>
+            <div class="grid2">
+              {([['m', 'גבר'], ['f', 'אישה']] as const).map(([id, l]) => <button key={id} class={'chip' + ((p.sex ?? 'm') === id ? ' on' : '')} onClick={() => setProfile({ sex: id })}>{l}</button>)}
+            </div>
             <div class="g card">
               <div class="field">
                 <div><label class="lbl">גיל</label><input class="inp num" inputMode="numeric" value={p.age} onChange={(e) => setProfile({ age: Number(nv(e)) || p.age })} /></div>
@@ -339,7 +364,7 @@ function SettingsBody() {
                 <div><label class="lbl">יעד משקל (ק״ג)</label><input class="inp num" inputMode="decimal" value={p.goalKg} onChange={(e) => setProfile({ goalKg: Number(nv(e).replace(',', '.')) || p.goalKg })} /></div>
               </div>
             </div>
-            <div class="sec"><span>קצב עלייה</span></div>
+            <div class="sec"><span>קצב שינוי המשקל</span></div>
             <div class="g rows">
               {([['slow', 'איטי ונקי', 'כ-0.25 ק״ג בשבוע'], ['mid', 'בינוני', 'כ-0.5 ק״ג בשבוע'], ['fast', 'אגרסיבי', 'כ-0.75 ק״ג ומעלה, יותר שומן']] as const).map(([id, l, d]) => (
                 <button class={'opt' + (p.pace === id ? ' on' : '')} onClick={() => setProfile({ pace: id })}>
@@ -401,6 +426,13 @@ function SettingsBody() {
               })}
             </div>
             <div class="note">אימונים קבועים נוצרים אוטומטית בלוח השנה. ביטול אימון בודד נעשה מהלוח או ממסך היום.</div>
+            <div class="sec"><span>טיימר מנוחה בין סטים</span></div>
+            <div class="g card">
+              <div class="chips" style={{ margin: 0, flexWrap: 'wrap', overflow: 'visible' }}>
+                {[0, 45, 60, 90, 120, 180].map((n) => <button key={n} class={'chip' + (set.show.restSec === n ? ' on' : '')} onClick={() => actions.saveSettings({ show: { ...set.show, restSec: n } })}>{n === 0 ? 'כבוי' : n >= 60 ? `${n / 60 === Math.floor(n / 60) ? n / 60 : (n / 60).toFixed(1)} דק׳` : `${n} שנ׳`}</button>)}
+              </div>
+              <div class="note" style={{ marginTop: 10 }}>ביומן האימון מסמנים סט כבוצע והטיימר מתחיל לבד, עם צליל ורטט בסיום.</div>
+            </div>
           </>
         )}
 
@@ -435,7 +467,7 @@ function SettingsBody() {
                 )}
               </div>
 
-              <div class="sec"><span>דרך יומן Google (חלופה)</span></div>
+              <div class="sec"><span>חלופה: דרך יומן Google</span></div>
               <div class="g rows" style={{ padding: '14px 16px' }}>
                 <div style={{ fontSize: 15, lineHeight: 1.6 }}>
                   {br.connected ? 'התזכורות נשלחות ליומן Google שלך כאירועים עם התראה, ולכן מגיעות לאייפון גם כשהאפליקציה סגורה (דרך אפליקציית Google Calendar או היומן של אפל).' : 'התזכורות נשלחות דרך Google Calendar, כדי שיגיעו לאייפון גם כשהאפליקציה סגורה. חבר קודם את היומן.'}
@@ -530,34 +562,47 @@ function SettingsBody() {
 
               <button class="btn block" style={{ marginTop: 14 }} disabled={!br.connected} onClick={syncNow}><RefreshCw /> עדכן ביומן עכשיו</button>
               <div class="note">התזכורות נכתבות ל-14 הימים הקרובים ומתעדכנות לבד. ארוחה שכבר רשמת היום לא תזכיר שוב. אפשר לראות אותן ביומן "workOut".</div>
-              <div class="note">התראות Push אמיתיות מהאפליקציה עצמה דורשות שרת קטן שרץ ברקע. זה אפשרי לבנות בהמשך, ועד אז היומן הוא הדרך האמינה לקבל התראה כשהאפליקציה סגורה.</div>
             </>
           );
         })()}
 
         {page === 'meals' && (
           <>
+            <div class="sec"><span>הארוחות שלך</span></div>
             <div class="g rows">
-              {set.slots.map((sl) => (
+              {[...set.slots].sort((a, b) => a.time.localeCompare(b.time)).map((sl) => (
                 <button class="lrow" key={sl.id} onClick={() => setMl({ id: sl.id, name: sl.name, time: sl.time })}>
-                  <span class="lt">{sl.name}<small class="num">{sl.time}</small></span><ChevronLeft class="lc" />
+                  <span class="lt">{sl.name}<small class="num">שעה רגילה {sl.time}</small></span><ChevronLeft class="lc" />
                 </button>
               ))}
             </div>
-            <button class="btn block" style={{ marginTop: 14 }} onClick={() => setMl({ id: uid(), name: '', time: '12:00', isNew: true })}><Plus /> הוסף ארוחה</button>
-          </>
-        )}
+            <button class="btn block" style={{ marginTop: 12 }} onClick={() => setMl({ id: uid(), name: '', time: '12:00', isNew: true })}><Plus /> הוסף ארוחה</button>
+            <div class="note">השעה הרגילה קובעת לאיזו ארוחה נרשם מה שאתה מוסיף, ומתי תגיע תזכורת.</div>
 
-        {page === 'start' && (
-          <>
+            <div class="sec"><span>מתי היום מתחיל</span></div>
             <div class="g rows">
               {[0, 1, 2, 3, 4, 5, 6].map((h) => (
-                <button class={'opt' + (set.resetHour === h ? ' on' : '')} onClick={() => { actions.saveSettings({ resetHour: h }); toast('התחלת היום עודכנה'); }}>
+                <button class={'opt' + (set.resetHour === h ? ' on' : '')} key={h} onClick={() => { actions.saveSettings({ resetHour: h }); toast('תחילת היום עודכנה'); }}>
                   <span>{h === 0 ? 'חצות (00:00)' : `0${h}:00 לפנות בוקר`}</span><span class="rd" />
                 </button>
               ))}
             </div>
-            <div class="note">ארוחות שנרשמו אחרי חצות ועד השעה הזו ייספרו ליום הקודם.</div>
+            <div class="note">ארוחות שנרשמו אחרי חצות ועד השעה הזו נספרות ליום הקודם. השינוי מתעדכן מיד.</div>
+          </>
+        )}
+
+        {page === 'cals' && (
+          <>
+            <div class="g rows">
+              <Row icon={<CalendarDays />} title="Google Calendar" value={br.connected ? `מחובר · ${br.events.length} אירועים` : 'קריאת אירועים וכתיבת אימונים'} badge={!br.connected} onClick={() => setPage('gcal')} />
+              <Row icon={<CalendarPlus />} title="פיד לקריאה בלבד" value={set.cal.enabled ? `פעיל${set.cal.alertMin ? ` · התראה ${set.cal.alertMin} דק׳ לפני` : ''}` : 'לא מחובר'} onClick={() => setPage('calendar')} />
+            </div>
+            <div class="g card">
+              <div class="mu" style={{ lineHeight: 1.7 }}>
+                <b style={{ color: '#fff' }}>Google Calendar:</b> האפליקציה קוראת את האירועים שלך (כדי לדעת מתי עמוס ומתי יש זמן לאכול), וכותבת ליומן אימונים ותזכורות.<br />
+                <b style={{ color: '#fff' }}>פיד לקריאה בלבד:</b> האימונים מופיעים ביומן של אפל כיומן מנוי, בלי לחבר חשבון Google.
+              </div>
+            </div>
           </>
         )}
 
@@ -567,6 +612,7 @@ function SettingsBody() {
               <div style={{ marginBottom: 4 }}>גיבוי אחרון</div>
               <b style={{ fontSize: 22 }}>{lastTxt}</b>
               <div class="mu" style={{ marginTop: 8 }}>הנתונים נשמרים רק בטלפון. גיבוי לקובץ מגן עליך אם האפליקציה תימחק.</div>
+              <div class="mu" style={{ marginTop: 8, fontSize: 12.5, lineHeight: 1.6 }}>בגיבוי: ארוחות, אימונים, משקל, יעדים והגדרות. לא בגיבוי (מטעמי אבטחה): מפתח Gemini, כתובות הקיצורים, טוקנים של יומנים והמסמכים. אחרי שחזור במכשיר חדש צריך לחבר אותם מחדש.</div>
             </div>
             <div style={{ display: 'flex', gap: 10, marginTop: 12 }}>
               <button class="btn primary" style={{ flex: 1 }} onClick={async () => { const r = await exportBackup(); if (r !== 'cancelled') toast('הגיבוי נוצר'); }}><Download /> ייצוא</button>
@@ -919,9 +965,12 @@ function SettingsBody() {
                 ? <button class="btn primary block" onClick={() => void applyUpdate()}><RefreshCw /> עדכן עכשיו</button>
                 : <button class="btn block" onClick={() => void checkForUpdate()}><RefreshCw class={u.status === 'checking' ? 'spin' : ''} /> בדוק עדכונים</button>}
             </div>
-            <div class="sec"><span><Info size={14} style={{ verticalAlign: -2 }} /> אבחון מסך</span></div>
-            <div class="g card mu num" style={{ fontSize: 12, lineHeight: 1.6 }}>{diag()}</div>
-            <VpLog />
+            <details class="g card scd" style={{ marginTop: 16 }}>
+              <summary><b><Info size={14} style={{ verticalAlign: -2 }} /> אבחון (למקרה של תקלה)</b><small>גודל מסך, יומן גובה ויומן קריאות ל-AI</small></summary>
+              <div class="mu num" style={{ fontSize: 12, lineHeight: 1.6 }}>{diag()}</div>
+              <VpLog />
+              <button class="btn sm" style={{ marginTop: 10 }} onClick={() => setPage('ailog')}>יומן קריאות ל-AI</button>
+            </details>
           </>
         )}
       </div>

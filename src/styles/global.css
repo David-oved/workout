@@ -1135,3 +1135,18 @@ body.fx .as-tray.dock{animation:slideUp .5s var(--spring) backwards}
 .is-tx svg{width:18px;height:18px}
 .inbox-list{display:flex;flex-direction:column;gap:12px;padding:6px 2px 16px;overflow-y:auto;flex:1}
 .inbox-foot{padding:10px 4px calc(14px + env(safe-area-inset-bottom));border-top:.5px solid rgba(255,255,255,.1)}
+
+/* ===== הגדרות: תיקון כותרות השורות (המחלקה lt של הסרגל התחתון דרסה אותן) וקיפול הוראות ===== */
+.lrow .lt{display:block;flex-direction:initial;align-items:initial;justify-content:initial;gap:0;text-align:right;color:var(--tx)}
+.scd{padding:0;overflow:hidden}
+.scd>summary{list-style:none;cursor:pointer;display:flex;flex-direction:column;gap:2px;padding:14px 16px;position:relative}
+.scd>summary::-webkit-details-marker{display:none}
+.scd>summary::after{content:'';position:absolute;inset-inline-end:16px;top:50%;width:8px;height:8px;border-inline-end:2px solid var(--mu2);border-bottom:2px solid var(--mu2);transform:translateY(-70%) rotate(45deg);transition:transform .25s var(--ease)}
+.scd[open]>summary::after{transform:translateY(-30%) rotate(225deg)}
+.scd>summary small{color:var(--mu);font-size:13px}
+.scd[open]>summary{border-bottom:.5px solid var(--line)}
+.scd>*:not(summary){margin-inline:16px}
+.scd>*:last-child{margin-bottom:14px}
+.scd>summary+*{margin-top:12px}
+.scd ol{margin:10px 16px 0;padding-inline-start:20px;line-height:1.7;font-size:14px}
+.scd .mu{font-size:12.5px;line-height:1.6;margin-top:10px}
