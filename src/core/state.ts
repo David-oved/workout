@@ -98,7 +98,7 @@ function persist() {
     const s = store.get();
     try { await set(KEY, s); } catch { /* ignore */ }
     try { localStorage.setItem(LS_KEY, JSON.stringify(s)); } catch { /* מכסה מלאה: מדלגים על המראה */ }
-  }, 150);
+  }, 350);
 }
 
 export function update(fn: (s: State) => State) {

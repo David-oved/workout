@@ -8,8 +8,8 @@ import { DAY_NAMES, DAY_SHORT, MONTHS, addDays, dayMonth, dow, parseKey, todayKe
 import { ui, setUi, openAdd } from '../ui/ui';
 
 export function CalendarScreen() {
-  const s = store.use((x) => x);
   const tab = ui.use((u) => u.tab);
+  const s = store.useWhen((x) => x, tab === 'calendar');
   const today = todayKey(s.settings.resetHour);
   const [offset, setOffset] = useState(0);
   const [sel, setSel] = useState(today);

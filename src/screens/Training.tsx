@@ -19,7 +19,7 @@ const REST_TIPS = ['נושמים. שותים. סבלנות 💧', 'השרירי�
 /** יומן אימון: תרגילים וסטים. הערכים מהאימון הקודם מוצעים מראש, כדי שרק תתקן מה שהשתנה */
 export function TrainingSheet() {
   const t = ui.use((u) => u.training);
-  const s = store.use((x) => x);
+  const s = store.useWhen((x) => x, !!t);
   const lastT = useRef(t);
   if (t) lastT.current = t;
   const cur = t ?? lastT.current;

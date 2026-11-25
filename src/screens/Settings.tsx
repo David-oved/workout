@@ -19,7 +19,7 @@ import { FullScreen, Sheet } from '../ui/components';
 import { exportBackup, importBackup } from '../core/backup';
 import { clearLog, fmtSnap, readLog, snapshot } from '../viewportLog';
 import { srvEnabled, setSrvEnabled } from '../siri/cfg';
-import { siri, enableSiri, disableSiri, rotateSiri, siriUrl, photoUrl, testSiri } from '../siri/siri';
+import { siri, enableSiri, disableSiri, rotateSiri, siriUrl, photoUrl, statusUrl, testSiri } from '../siri/siri';
 import { APP_VERSION, BUILD_ID, updater, checkForUpdate, applyUpdate } from '../update/updater';
 import type { Macros, Profile, TargetKey } from '../core/types';
 
@@ -149,7 +149,8 @@ function SettingsBody() {
   const setAi = (patch: Partial<typeof set.ai>) => actions.saveSettings({ ai: { ...set.ai, ...patch } });
   const [gurl, setGurl] = useState('');
   const [gerr, setGerr] = useState('');
-  const s = store.use((x) => x);
+  const settingsOpen = ui.use((x) => x.settingsOpen);
+  const s = store.useWhen((x) => x, settingsOpen);
   const u = updater.use((x) => x);
   const set = s.settings;
   const p = set.profile;
@@ -284,6 +285,18 @@ function SettingsBody() {
                     <li><b>״המר תמונה״</b> ל-JPEG, ואחריה <b>״שנה גודל של תמונה״</b> לרוחב 1280.</li>
                     <li><b>״קידוד Base64״</b> של התמונה, עם <b>״מעברי שורה: ללא״</b>.</li>
                     <li><b>״קבל תוכן של כתובת URL״</b> עם הכתובת לתמונות: שיטה <b>POST</b>, גוף הבקשה <b>טופס</b>. שני שדות מסוג טקסט: <b>image</b> = תוצאת הקידוד, ו-<b>text</b> = ההערה (יכולה להיות ריקה).</li>
+                  </ol>
+                </div>
+                <div class="sec"><span>״כמה נשאר לי היום?״</span></div>
+                <div class="g card" style={{ lineHeight: 1.7, fontSize: 14 }}>
+                  <div class="mu" style={{ fontSize: 13, marginBottom: 8 }}>קיצור קטן ששואל את Siri ומקריא כמה קלוריות וחלבון נשארו לך להיום, בלי לפתוח את האפליקציה.</div>
+                  <pre class="adet" style={{ direction: 'ltr', textAlign: 'left', whiteSpace: 'pre-wrap', wordBreak: 'break-all', fontSize: 11.5, margin: 0 }}>{statusUrl()}</pre>
+                  <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
+                    <button class="btn primary sm" onClick={async () => { try { await navigator.clipboard.writeText(statusUrl()); toast('הכתובת הועתקה'); } catch { toast('ההעתקה נכשלה'); } }}>העתק כתובת</button>
+                  </div>
+                  <ol style={{ margin: '12px 0 0', paddingInlineStart: 20 }}>
+                    <li>בקיצורים: פעולה <b>״קבל תוכן של כתובת URL״</b> עם הכתובת הזו (שיטה <b>GET</b>, בלי גוף בקשה).</li>
+                    <li>אחריה <b>״אמור טקסט״</b> (Speak Text) עם התוצאה, ושם לקיצור: ״כמה נשאר לי״.</li>
                   </ol>
                 </div>
                 <div class="note">הטקסט עובר דרך ה-Worker שלך ב-Cloudflare ונשמר שם עד שהאפליקציה מושכת אותו (לכל היותר 14 יום). הכתובת היא סוד: מי שיש לו אותה יכול לשלוח לך ארוחות, ולכן היא נשמרת רק במכשיר ולא בגיבוי. כשהניתוח בשרת פעיל, מפתח ה-Gemini נשמר גם ב-Worker הפרטי שלך (ב-Cloudflare), ולא בגיבוי ולא ב-GitHub. כיבוי המתג מוחק אותו משם.</div>

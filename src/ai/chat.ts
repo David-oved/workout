@@ -415,3 +415,15 @@ export const resolveProduct = (msgId: string, pid: string, status: 'saved' | 'di
   patchMsg(msgId, (m) => ({ ...m, products: m.products?.map((p) => (p.id === pid ? { ...p, status } : p)) }));
 
 export const pendingProducts = (m?: Msg) => (m?.products ?? []).filter((p) => p.status === 'pending');
+
+/** נשלחה הודעה בלי רשת: כשהחיבור חוזר, שולחים אותה שוב לבד (רק אם השגיאה היא תקלת רשת ולא מכסה או מפתח) */
+if (typeof window !== 'undefined') {
+  window.addEventListener('online', () => {
+    const c = chat.get();
+    const last = c.messages[c.messages.length - 1];
+    if (c.busy || !c.error || c.quota || last?.role !== 'user') return;
+    if (!/חיבור|רשת|אינטרנט|network|fetch/i.test(c.error + ' ' + (c.detail ?? ''))) return;
+    toast('חזר החיבור, שולח שוב');
+    void retryLast();
+  });
+}

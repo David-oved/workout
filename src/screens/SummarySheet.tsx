@@ -11,7 +11,7 @@ import { Md } from './AiChat';
 /** סיכום סוף יום: מספרים מיד, וסיכום ה-AI (אימון, אכילה, מה לשפר, מחר) נוצר ונשמר לכל יום */
 export function SummarySheet() {
   const date = ui.use((u) => u.summary);
-  const s = store.use((x) => x);
+  const s = store.useWhen((x) => x, !!date);
   const aiOn = aiState.use((x) => x.configured);
   const last = useRef(date);
   if (date) last.current = date;

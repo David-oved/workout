@@ -19,7 +19,7 @@ const num = (v: string) => (v === '' ? 0 : Number(v) || 0);
 
 export function EditEntrySheet() {
   const id = ui.use((u) => u.editEntry);
-  const s = store.use((x) => x);
+  const s = store.useWhen((x) => x, !!id);
   const lastId = useRef<string | null>(null);
   if (id) lastId.current = id;
   const entry = s.entries.find((e) => e.id === (id ?? lastId.current));
@@ -146,7 +146,7 @@ export function EditEntrySheet() {
 
 export function WorkoutSheet() {
   const ws = ui.use((u) => u.workoutSheet);
-  const s = store.use((x) => x);
+  const s = store.useWhen((x) => x, !!ws);
   const last = useRef(ws);
   if (ws) last.current = ws;
   const cur = last.current;

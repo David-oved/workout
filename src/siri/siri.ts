@@ -5,6 +5,7 @@ import { toast } from '../ui/ui';
 import { store } from '../core/state';
 import { applyServerResult, kickInbox, prepareInbox } from './prepare';
 import { clearServerConfig, startCfgSync, syncServerConfig } from './cfg';
+import { startStatusSync } from './status';
 import { set } from 'idb-keyval';
 import { fileToJpeg } from '../ai/image';
 import type { AiItem } from '../ai/pure';
@@ -28,6 +29,7 @@ const newToken = () => {
 export const siri = createStore({ on: !!get(), busy: false, msg: '' });
 
 export const siriUrl = () => `${PUSH_URL}/siri/${get() ?? ''}/add`;
+export const statusUrl = () => `${PUSH_URL}/siri/${get() ?? ''}/status`;
 export const photoUrl = () => `${PUSH_URL}/siri/${get() ?? ''}/photo`;
 const base = () => `${PUSH_URL}/siri/${get() ?? ''}`;
 
@@ -147,6 +149,7 @@ function nextDelay(): number {
 export function startSiri() {
   void syncInbox();
   startCfgSync();
+  startStatusSync();
   // פריטים שהניתוח המקומי שלהם נקטע (האפליקציה נסגרה באמצע) או שהמתינו להשהיה: ממשיכים בסדר הנכון
   for (const it of [...store.get().inbox].sort((a, b) => a.ts - b.ts)) if (!it.status || it.status === 'busy' || (it.status === 'queued' && !it.srv)) prepareInbox(it);
   const wake = () => { if (document.visibilityState === 'visible') { failures = 0; void syncInbox(); kickInbox(); } };

@@ -24,7 +24,7 @@ Words like "שלושה" are numbers (3). "של דקה" is unit sec with reps 60.
 /** תוכנית האימונים: ימים, בלוקים ותרגילים עם עריכה חכמה (ידנית, מטקסט, או בעזרת AI) */
 export function PlanSheet() {
   const st = ui.use((u) => u.plan);
-  const s = store.use((x) => x);
+  const s = store.useWhen((x) => x, !!st);
   const aiOn = aiState.use((x) => x.configured);
   const last = useRef(st);
   if (st) last.current = st;

@@ -13,8 +13,8 @@ import { hold, openMenu } from '../ui/actmenu';
 import { askAi as askAiHold } from '../ai/ask';
 
 export function ProgressScreen() {
-  const s = store.use((x) => x);
   const tab = ui.use((u) => u.tab);
+  const s = store.useWhen((x) => x, tab === 'progress');
   const today = todayKey(s.settings.resetHour);
   const ws = weekStart(today);
   const days = Array.from({ length: 7 }, (_, i) => addDays(ws, i));

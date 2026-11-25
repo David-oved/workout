@@ -19,7 +19,7 @@ const r1 = (n: number) => Math.round(n * 10) / 10;
 export function StatSheet() {
   const key = ui.use((u) => u.stat);
   const date = ui.use((u) => u.date);
-  const s = store.use((x) => x);
+  const s = store.useWhen((x) => x, !!key);
   const last = useRef<K>('p');
   if (key) last.current = key;
   const k = key ?? last.current;

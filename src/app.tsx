@@ -1,10 +1,8 @@
-import { useEffect } from 'preact/hooks';
+import { useEffect, useState } from 'preact/hooks';
+import { lazy, Suspense } from 'preact/compat';
 import { Dock, ToastView, UpdateBanner } from './ui/components';
 import { CameraView } from './ui/CameraView';
 import { ActMenu } from './ui/actmenu';
-import { TrainingSheet } from './screens/Training';
-import { SummarySheet } from './screens/SummarySheet';
-import { PlanSheet } from './screens/PlanSheet';
 import { Onboarding } from './screens/Onboarding';
 import { StatSheet } from './screens/StatSheet';
 import { InboxSheet } from './screens/InboxCard';
@@ -12,13 +10,33 @@ import { TodayScreen } from './screens/Today';
 import { AddScreen } from './screens/Add';
 import { ProgressScreen } from './screens/Progress';
 import { CalendarScreen } from './screens/Calendar';
-import { SettingsScreen } from './screens/Settings';
 import { EditEntrySheet, WorkoutSheet } from './screens/Sheets';
 import { openAdd, setUi, ui } from './ui/ui';
 import { store, update, ensureWorkouts } from './core/state';
 import { todayKey } from './core/dates';
 
+// מסכים כבדים (הגדרות, אימון, תוכנית, סיכום) נטענים בנפרד אחרי שהמסך הראשי כבר מוצג, כדי שהאפליקציה תיפתח מהר
+const SettingsScreen = lazy(() => import('./screens/Settings').then((m) => ({ default: m.SettingsScreen })));
+const TrainingSheet = lazy(() => import('./screens/Training').then((m) => ({ default: m.TrainingSheet })));
+const SummarySheet = lazy(() => import('./screens/SummarySheet').then((m) => ({ default: m.SummarySheet })));
+const PlanSheet = lazy(() => import('./screens/PlanSheet').then((m) => ({ default: m.PlanSheet })));
+
+/** טוען את המסכים הכבדים ברגע שהדפדפן פנוי, או מיד כשצריך אחד מהם */
+function Later({ need, children }: { need: boolean; children: preact.ComponentChildren }) {
+  const [idle, setIdle] = useState(false);
+  useEffect(() => {
+    const w = window as unknown as { requestIdleCallback?: (f: () => void, o?: { timeout: number }) => number };
+    const id = w.requestIdleCallback ? w.requestIdleCallback(() => setIdle(true), { timeout: 4000 }) : window.setTimeout(() => setIdle(true), 2000);
+    return () => { if (!w.requestIdleCallback) clearTimeout(id); };
+  }, []);
+  return idle || need ? <Suspense fallback={null}>{children}</Suspense> : null;
+}
+
 export function App() {
+  const needSettings = ui.use((u) => u.settingsOpen);
+  const needTrain = ui.use((u) => !!u.training);
+  const needSummary = ui.use((u) => !!u.summary);
+  const needPlan = ui.use((u) => !!u.plan);
   // כשחוזרים לאפליקציה אחרי זמן: מרעננים את "היום" ומוודאים שיש אימונים מתוזמנים קדימה
   useEffect(() => {
     let hiddenAt = 0;
@@ -67,13 +85,13 @@ export function App() {
       <Dock onAdd={() => openAdd()} />
       <InboxSheet />
       <AddScreen />
-      <SettingsScreen />
+      <Later need={needSettings}><SettingsScreen /></Later>
       <EditEntrySheet />
       <WorkoutSheet />
-      <TrainingSheet />
-      <SummarySheet />
+      <Later need={needTrain}><TrainingSheet /></Later>
+      <Later need={needSummary}><SummarySheet /></Later>
       <StatSheet />
-      <PlanSheet />
+      <Later need={needPlan}><PlanSheet /></Later>
       <Onboarding />
       <CameraView />
       <ActMenu />

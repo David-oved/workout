@@ -68,6 +68,19 @@ const loadInbox = async (env, t) => { try { const s = await env.SUBS.get(inboxKe
  * תיבת דואר ל-Siri / אפליקציית קיצורים: הקיצור שולח טקסט מוכתב ל-/siri/<token>/add, והאפליקציה מושכת אותו
  * מ-/list ומאשרת ב-/ack. ה-token הוא סוד אקראי של המשתמש (אין חשבונות). הטקסט נשמר עד 14 יום או עד שנמשך.
  */
+/** משפט בעברית: כמה נשאר להיום. אם הנתונים לא מהיום הנוכחי (לפי שעת תחילת היום שלך) אומר את זה במקום להטעות */
+function statusText(st) {
+  if (!st) return 'עוד אין לי נתונים. פתח את האפליקציה פעם אחת.';
+  const now = new Date(Date.now() - (st.reset || 0) * 3600_000);
+  const day = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jerusalem' }).format(now);
+  if (st.day !== day) return 'עוד לא נרשמה היום ארוחה באפליקציה, אז אין לי מה להקריא. היעד שלך היום ' + st.target.k + ' קלוריות ו-' + st.target.p + ' גרם חלבון.';
+  const left = { k: st.target.k - st.eaten.k, p: st.target.p - st.eaten.p };
+  const fmt = (v) => Math.abs(v).toLocaleString('en-US');
+  const kcal = left.k >= 0 ? 'נשארו לך ' + fmt(left.k) + ' קלוריות' : 'עברת את היעד ב-' + fmt(left.k) + ' קלוריות';
+  const prot = left.p > 0 ? ' ועוד ' + fmt(left.p) + ' גרם חלבון להשלים' : ' וכבר הגעת ליעד החלבון';
+  return kcal + prot + '. אכלת עד עכשיו ' + fmt(st.eaten.k) + ' מתוך ' + fmt(st.target.k) + '.';
+}
+
 const MAX_IMG = 9 * 1024 * 1024;
 const imgKey = (t, id) => `img:${t}:${id}`;
 const fromB64 = (s) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0)).buffer;
@@ -158,6 +171,21 @@ async function siri(req, env, url, token, action, ctx) {
     if (ctx) ctx.waitUntil(processToken(env, token, { budgetMs: 15_000, timeoutMs: 24_000 }).catch(() => undefined));
     return json(req, { ok: true });
   }
+  // מה נשאר להיום: האפליקציה מעדכנת, והקיצור (בקשת GET) מקבל משפט מוכן להקראה
+  if (action === 'status') {
+    const key = 'st:' + token;
+    if (req.method === 'POST') {
+      let b;
+      try { b = await req.json(); } catch { return json(req, { ok: false, error: 'bad json' }, 400); }
+      const n = (v) => Math.max(-99999, Math.min(99999, Math.round(Number(v) || 0)));
+      const pack = (o) => ({ k: n(o?.k), p: n(o?.p), c: n(o?.c), f: n(o?.f) });
+      await env.SUBS.put(key, JSON.stringify({ day: String(b.day ?? '').slice(0, 10), reset: n(b.reset), eaten: pack(b.eaten), target: pack(b.target), at: Date.now() }), { expirationTtl: 3 * 86400 });
+      return json(req, { ok: true });
+    }
+    let st = null;
+    try { const raw = await env.SUBS.get(key); st = raw ? JSON.parse(raw) : null; } catch { /* ignore */ }
+    return new Response(statusText(st), { headers: { ...TXT, ...cors(req) } });
+  }
   if (action === 'clear') { await deleteCfg(env, token); return json(req, { ok: true }); }
   if (action === 'list') return json(req, { items: await loadQ(env, token), srv: !!(await loadCfg(env, token))?.key });
   if (action === 'ack' && req.method === 'POST') {
@@ -175,7 +203,7 @@ async function siri(req, env, url, token, action, ctx) {
 async function handle(req, env, ctx) {
   const url = new URL(req.url);
   if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors(req) });
-  const sm = url.pathname.match(/^\/siri\/([A-Za-z0-9_-]{22,64})\/(add|photo|list|ack|config|clear|img\/[a-f0-9]{12})$/);
+  const sm = url.pathname.match(/^\/siri\/([A-Za-z0-9_-]{22,64})\/(add|photo|list|ack|config|clear|status|img\/[a-f0-9]{12})$/);
   if (sm) return siri(req, env, url, sm[1], sm[2], ctx);
 
   if (req.method === 'GET' && url.pathname === '/config') return json(req, { pub: env.VAPID_PUBLIC, v: 1 });

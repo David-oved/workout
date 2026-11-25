@@ -34,7 +34,7 @@ export function AddScreen() {
   const slot = ui.use((u) => u.addSlot);
   const date = ui.use((u) => u.addDate);
   const addView = ui.use((u) => u.addView);
-  const s = store.use((x) => x);
+  const s = store.useWhen((x) => x, open);
   const ch = chat.use((x) => x);
   const configured = aiState.use((x) => x.configured);
   const trayS = tray.use((x) => x);
