@@ -7,7 +7,7 @@
  * 3. ה-Service Worker באפליקציה מקבל את ה-Push, שולף את הטקסט מ-/pending ומציג התראה.
  * אין כאן שום מידע אישי מעבר לטקסט התזכורות ולכתובת ה-Push של המכשיר. המפתח הפרטי (VAPID) נשמר כסוד ב-Cloudflare.
  */
-import { loadInbox as loadQ, loadCfg, processToken, processAll, saveCfg, deleteCfg } from './queue.js';
+import { loadInbox as loadQ, loadCfg, markActive, processToken, processAll, saveCfg, deleteCfg } from './queue.js';
 const ORIGINS = ['https://david-oved.github.io', 'http://localhost:5173'];
 const SUBJECT = 'https://david-oved.github.io/workout/';
 const enc = new TextEncoder();
@@ -134,6 +134,7 @@ async function siri(req, env, url, token, action, ctx) {
     }
     list.push(item);
     await env.SUBS.put(inboxKey(token), JSON.stringify(list.slice(-20)), { expirationTtl: 14 * 86400 });
+    await markActive(env, token);
     // ניתוח מיידי ברקע (ואם לא הספיק, השעון ממשיך כל דקה)
     if (ctx) ctx.waitUntil(processToken(env, token, { budgetMs: 15_000, timeoutMs: 24_000 }).catch(() => undefined));
     return new Response(img ? 'התמונה נרשמה ✓' : action === 'photo' ? `נרשם ✓ אבל בלי תמונה. הגיע: ${seen.join(' ') || ctype || 'כלום'}` : 'נרשם ✓', { headers: { ...TXT, ...cors(req) } });
@@ -152,6 +153,7 @@ async function siri(req, env, url, token, action, ctx) {
     if (typeof b.key !== 'string' || b.key.length < 20 || b.key.length > 200) return json(req, { ok: false, error: 'bad key' }, 400);
     const think = {};
     for (const [k, v] of Object.entries(b.think && typeof b.think === 'object' ? b.think : {})) if (typeof v === 'string') think[String(k).slice(0, 60)] = v.slice(0, 12);
+    await markActive(env, token);
     await saveCfg(env, token, { key: b.key, vision: list(b.vision), text: list(b.text), think, system: String(b.system ?? '').slice(0, 24000), ctx: String(b.ctx ?? '').slice(0, 24000), at: Date.now() });
     if (ctx) ctx.waitUntil(processToken(env, token, { budgetMs: 15_000, timeoutMs: 24_000 }).catch(() => undefined));
     return json(req, { ok: true });

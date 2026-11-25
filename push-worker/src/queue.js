@@ -17,6 +17,19 @@ const cfgKey = (t) => `cfg:${t}`;
 const lockKey = (t) => `lock:${t}`;
 
 export const loadInbox = async (env, t) => { try { const s = await env.SUBS.get(inboxKey(t)); return s ? JSON.parse(s) : []; } catch { return []; } };
+const ACT = 'act';
+const loadAct = async (env) => { try { const s = await env.SUBS.get(ACT); return s ? JSON.parse(s) : []; } catch { return []; } };
+/** מסמן שלמשתמש יש פריטים שמחכים לניתוח (נכתב רק כשמשהו משתנה) */
+export async function markActive(env, t) {
+  const a = await loadAct(env);
+  if (!a.includes(t)) await env.SUBS.put(ACT, JSON.stringify([...a, t].slice(-50)));
+}
+async function unmarkActive(env, t) {
+  const a = await loadAct(env);
+  if (a.includes(t)) await env.SUBS.put(ACT, JSON.stringify(a.filter((x) => x !== t)));
+}
+const pending = (x) => x.st === 'q' || x.st === undefined || x.st === 'w' || x.st === 'r';
+
 export const loadCfg = async (env, t) => { try { const s = await env.SUBS.get(cfgKey(t)); return s ? JSON.parse(s) : null; } catch { return null; } };
 
 /** מעדכן פריט אחד בלבד (קורא מחדש לפני כתיבה, כדי לא לדרוס פריטים שנוספו בינתיים) */
@@ -81,12 +94,14 @@ async function runOne(env, cfg, t, it, timeoutMs) {
   const models = (img ? cfg.vision : cfg.text) ?? [];
   if (!models.length) return { st: 'fail', n, err: 'אין מודל מוגדר. פתח את האפליקציה פעם אחת' };
 
+  const t0 = Date.now();
   let delay = 0; // השהיה מוצעת (שניות) אם הכשל זמני
   let temp = false;
   let lastErr = '';
   let permanent = '';
   for (const model of models.slice(0, 3)) {
     const lvl = cfg.think?.[model];
+    if (Date.now() - t0 > 150_000) { temp = true; break; } // לא מחזיקים את הנעילה יותר מדי
     for (const v of lvl ? [{ lvl, json: true }, { lvl: undefined, json: true }, { lvl: undefined, json: false }] : [{ lvl: undefined, json: true }, { lvl: undefined, json: false }]) {
       const r = await callGemini(cfg, model, v.lvl, cfg.system ?? '', parts, !!img, timeoutMs, v.json);
       if (r.ok) {
@@ -117,36 +132,36 @@ async function runOne(env, cfg, t, it, timeoutMs) {
  */
 export async function processToken(env, t, o) {
   const cfg = await loadCfg(env, t);
-  if (!cfg?.key) return;
+  if (!cfg?.key) { await unmarkActive(env, t); return; }
   const lock = Number(await env.SUBS.get(lockKey(t)));
-  if (lock && Date.now() - lock < 150_000) return; // סבב אחר כבר רץ
+  if (lock && Date.now() - lock < 280_000) return; // סבב אחר כבר רץ
   const started = Date.now();
+  let lockAt = 0;
   try {
     for (;;) {
       if (Date.now() - started > o.budgetMs) break;
-      await env.SUBS.put(lockKey(t), String(Date.now()), { expirationTtl: 120 });
       const now = Date.now();
       const list = await loadInbox(env, t);
       const next = list
         .filter((x) => x.st === 'q' || x.st === undefined || (x.st === 'r' && (x.at ?? 0) <= now) || (x.st === 'w' && now - (x.wAt ?? 0) > 200_000))
         .sort((a, b) => a.ts - b.ts)[0];
       if (!next) break;
-      await patchItem(env, t, next.id, { st: 'w', wAt: now });
+      if (Date.now() - lockAt > 50_000) { lockAt = Date.now(); await env.SUBS.put(lockKey(t), String(lockAt), { expirationTtl: 300 }); }
       const r = await runOne(env, cfg, t, next, o.timeoutMs);
       await patchItem(env, t, next.id, r);
       // כשל זמני (רשת, מכסה): עוצרים את הסבב כדי לא להציף, וממשיכים בדקה הבאה
       if (r.st === 'r' && r.temp) break;
     }
   } finally {
-    try { await env.SUBS.delete(lockKey(t)); } catch { /* ignore */ }
+    if (lockAt) { try { await env.SUBS.delete(lockKey(t)); } catch { /* ignore */ } }
+    // אין יותר מה לנתח: יוצאים מהרשימה, והשעון לא ייגע ב-KV בשבילו
+    try { if (!(await loadInbox(env, t)).some(pending)) await unmarkActive(env, t); } catch { /* ignore */ }
   }
 }
 
 /** כל התורים עם פריטים שממתינים (נקרא מהשעון, כל דקה) */
 export async function processAll(env) {
-  const l = await env.SUBS.list({ prefix: 'inbox:' });
-  for (const k of l.keys) {
-    const t = k.name.slice('inbox:'.length);
+  for (const t of await loadAct(env)) {
     try { await processToken(env, t, { budgetMs: 8 * 60_000, timeoutMs: 90_000 }); } catch { /* ממשיכים לבא */ }
   }
 }
